@@ -1,6 +1,118 @@
-[meta]
-name = "aurora"
-version = "1.0.0"
-description = "cblog 默认主题"
-author = "cblog"
-license = "MIT"
+[theme]
+name        = "Aurora"
+version     = "1.0.0"
+author      = "cblog"
+description = "cblog 默认主题，简洁优雅"
+license     = "MIT"
+
+# ── 外观配置 ──────────────────────────────────────────────
+
+[[config]]
+key     = "primary_color"
+type    = "color"
+label   = "主色调"
+default = "#6366f1"
+group   = "外观"
+
+[[config]]
+key     = "font_body"
+type    = "font_select"
+label   = "正文字体"
+options = ["system-ui", "Georgia", "Noto Serif SC", "LXGW WenKai"]
+default = "system-ui"
+group   = "外观"
+
+[[config]]
+key     = "font_code"
+type    = "font_select"
+label   = "代码字体"
+options = ["monospace", "JetBrains Mono", "Fira Code"]
+default = "monospace"
+group   = "外观"
+
+[[config]]
+key     = "dark_mode"
+type    = "select"
+label   = "深色模式"
+options = [
+    { value = "auto",  label = "跟随系统" },
+    { value = "light", label = "始终浅色" },
+    { value = "dark",  label = "始终深色" },
+]
+default = "auto"
+group   = "外观"
+
+# ── 布局配置 ──────────────────────────────────────────────
+
+[[config]]
+key     = "posts_per_page"
+type    = "number"
+label   = "每页文章数"
+default = 10
+min     = 1
+max     = 50
+group   = "布局"
+
+[[config]]
+key     = "show_sidebar"
+type    = "boolean"
+label   = "显示侧边栏"
+default = true
+group   = "布局"
+
+[[config]]
+key        = "sidebar_position"
+type       = "select"
+label      = "侧边栏位置"
+options    = [
+    { value = "right", label = "右侧" },
+    { value = "left",  label = "左侧" },
+]
+default    = "right"
+depends_on = "show_sidebar"
+group      = "布局"
+
+# ── 功能配置 ──────────────────────────────────────────────
+
+[[config]]
+key     = "show_reading_time"
+type    = "boolean"
+label   = "显示阅读时间"
+default = true
+group   = "功能"
+
+[[config]]
+key     = "toc_min_headings"
+type    = "number"
+label   = "目录显示阈值（超过 N 个标题才显示）"
+default = 3
+min     = 0
+max     = 20
+group   = "功能"
+
+[[config]]
+key     = "footer_text"
+type    = "richtext"
+label   = "页脚文字"
+default = "Powered by cblog"
+group   = "功能"
+
+# ── 高级配置 ──────────────────────────────────────────────
+
+[[config]]
+key         = "custom_head_html"
+type        = "code"
+language    = "html"
+label       = "Head 注入"
+description = "注入到 <head> 末尾，适合放统计代码"
+default     = ""
+group       = "高级"
+
+[[config]]
+key         = "custom_css"
+type        = "code"
+language    = "css"
+label       = "自定义 CSS"
+description = "追加到主题 CSS 后面，优先级最高"
+default     = ""
+group       = "高级"

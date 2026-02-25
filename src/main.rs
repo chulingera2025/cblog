@@ -8,6 +8,7 @@ mod config;
 mod content;
 mod media;
 mod state;
+mod theme;
 
 #[derive(Parser)]
 #[command(name = "cblog", about = "Rust + Lua 博客引擎")]

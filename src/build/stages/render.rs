@@ -24,11 +24,10 @@ pub fn render_pages(
     let mut env = Environment::new();
     cbtml::filters::register_filters(&mut env);
 
-    // 使用 loader 加载编译后的模板
-    let templates = compiled_templates.clone();
-    env.set_loader(move |name| {
-        Ok(templates.get(name).cloned())
-    });
+    // 将编译后的模板逐个添加到环境中
+    for (name, source) in &compiled_templates {
+        env.add_template_owned(name.clone(), source.clone())?;
+    }
 
     let site_ctx = serde_json::json!({
         "title": config.site.title,

@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 /// 解析 Markdown 为 HTML
 pub fn render_markdown(source: &str) -> String {
     use pulldown_cmark::{Options, Parser, html};
@@ -79,7 +77,7 @@ pub fn extract_toc(source: &str) -> Option<String> {
 fn slugify_heading(text: &str) -> String {
     text.to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
         .collect::<String>()
         .split('-')
         .filter(|s| !s.is_empty())
@@ -98,8 +96,16 @@ pub fn count_words(text: &str) -> u32 {
                 count += 1;
                 in_ascii_word = true;
             }
-        } else if ch > '\u{4E00}' && ch < '\u{9FFF}' {
-            // CJK 统一汉字
+        } else if ch >= '\u{4E00}' && ch <= '\u{9FFF}' {
+            // CJK 统一汉字基本区
+            count += 1;
+            in_ascii_word = false;
+        } else if ch >= '\u{3400}' && ch <= '\u{4DBF}' {
+            // CJK 统一汉字扩展 A
+            count += 1;
+            in_ascii_word = false;
+        } else if ch >= '\u{F900}' && ch <= '\u{FAFF}' {
+            // CJK 兼容汉字
             count += 1;
             in_ascii_word = false;
         } else {

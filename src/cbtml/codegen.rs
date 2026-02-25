@@ -12,7 +12,13 @@ fn generate_node(node: &Node, output: &mut String, _depth: usize) -> Result<()> 
     match node {
         Node::Document { extends, children } => {
             if let Some(parent) = extends {
-                output.push_str(&format!("{{% extends \"{}.cbtml\" %}}\n", parent));
+                // 跨主题继承：aurora:post → aurora/post.cbtml
+                let template_path = if let Some((theme, template)) = parent.split_once(':') {
+                    format!("{}/{}.cbtml", theme, template)
+                } else {
+                    format!("{}.cbtml", parent)
+                };
+                output.push_str(&format!("{{% extends \"{}\" %}}\n", template_path));
             }
             for child in children {
                 generate_node(child, output, 0)?;

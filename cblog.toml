@@ -1,0 +1,38 @@
+[site]
+title = "cblog 示例站点"
+subtitle = "一个基于 Rust 的博客引擎"
+description = "cblog 是一个后台动态、前台全静态的博客引擎"
+url = "https://example.com"
+language = "zh-CN"
+timezone = "Asia/Shanghai"
+
+[site.author]
+name = "cblog"
+email = "admin@example.com"
+bio = "cblog 博客引擎开发者"
+
+[build]
+output_dir = "public"
+cache_dir = ".cblog-cache"
+posts_per_page = 10
+date_format = "Y年m月d日"
+excerpt_length = 160
+
+[theme]
+active = "aurora"
+
+[routes]
+post_url = "/posts/{slug}/"
+tag_url = "/tags/{slug}/"
+category_url = "/category/{slug}/"
+archive_url = "/archive/{year}/{month}/"
+
+[feed]
+enabled = true
+format = ["rss", "atom"]
+post_count = 20
+
+[sitemap]
+enabled = true
+change_freq = "weekly"
+priority = 0.8

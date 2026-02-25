@@ -1,0 +1,14 @@
+html [lang="{{ site.language }}"]
+  head
+    meta [charset="UTF-8"]
+    title {{ page.title }} - {{ site.title }}
+    meta [name="description" content="{{ site.description }}"]
+  body
+    header
+      h1
+        a [href="/"] {{ site.title }}
+      p {{ site.subtitle }}
+    main
+      slot content
+    footer
+      p &copy; {{ site.title }}

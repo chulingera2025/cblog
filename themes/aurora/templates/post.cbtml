@@ -1,0 +1,32 @@
+extends base
+slot content
+  article.post
+    header.post-header
+      h1 {{ post.title }}
+      div.post-meta
+        time {{ post.created_at }}
+        if post.category
+          span.category {{ post.category }}
+        end
+        span.word-count {{ post.word_count }} 字
+        span.reading-time {{ post.reading_time }} 分钟阅读
+      if post.tags
+        div.tags
+          for tag in post.tags
+            span.tag {{ tag }}
+          end
+      end
+    if post.toc
+      nav.toc
+        h3 目录
+        raw post.toc
+    end
+    div.post-content
+      raw post.content
+    nav.post-nav
+      if prev_post
+        a.prev [href="{{ prev_post.url }}"] {{ prev_post.title }}
+      end
+      if next_post
+        a.next [href="{{ next_post.url }}"] {{ next_post.title }}
+      end

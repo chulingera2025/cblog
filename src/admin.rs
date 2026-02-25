@@ -10,6 +10,7 @@ pub mod dashboard;
 pub mod media;
 pub mod pages;
 pub mod posts;
+pub mod theme;
 
 pub fn router(state: AppState) -> Router {
     // 无需认证的路由
@@ -45,6 +46,9 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/api/media", get(media::api_media_list))
         // 构建管理
         .route("/admin/build", get(build::build_history).post(build::trigger_build))
+        // 主题管理
+        .route("/admin/theme", get(theme::theme_settings).post(theme::save_theme_settings))
+        .route("/admin/theme/switch", post(theme::switch_theme))
         // 应用认证中间件
         .route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
 

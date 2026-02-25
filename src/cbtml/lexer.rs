@@ -1,4 +1,5 @@
-use anyhow::{Result, bail};
+use crate::cbtml::error::CbtmlError;
+use anyhow::Result;
 
 /// cbtml Token 类型
 #[derive(Debug, Clone, PartialEq)]
@@ -205,7 +206,12 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
                     col: indent_spaces + 1,
                 });
             } else {
-                bail!("{file_name}:{line_num}: for 语句缺少 'in' 关键字: {trimmed}");
+                return Err(CbtmlError::syntax(
+                    file_name,
+                    line_num,
+                    indent_spaces + 1,
+                    format!("for 语句缺少 'in' 关键字: {trimmed}"),
+                ).into());
             }
             line_idx += 1;
             continue;

@@ -1,5 +1,6 @@
+use crate::cbtml::error::CbtmlError;
 use crate::cbtml::lexer::{AttrValue, Token, TokenKind};
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 /// cbtml AST 节点
 #[derive(Debug, Clone)]
@@ -245,11 +246,12 @@ fn parse_children(
             }
 
             TokenKind::Extends(_) => {
-                bail!(
-                    "{file_name}:{}:{}: extends 指令只能出现在文件首行",
+                return Err(CbtmlError::syntax(
+                    file_name,
                     token.line,
-                    token.col
-                );
+                    token.col,
+                    "extends 指令只能出现在文件首行",
+                ).into());
             }
 
             TokenKind::RawContent(_) => {

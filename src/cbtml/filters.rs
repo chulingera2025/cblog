@@ -1,4 +1,5 @@
 use minijinja::{Environment, Value};
+use sha2::{Digest, Sha256};
 
 /// 向 MiniJinja 环境注册所有内置过滤器
 pub fn register_filters(env: &mut Environment) {
@@ -14,6 +15,10 @@ pub fn register_filters(env: &mut Environment) {
     env.add_filter("abs_url", filter_abs_url);
     env.add_filter("json", filter_json);
     env.add_filter("active_class", filter_active_class);
+    env.add_filter("md5", filter_md5);
+    env.add_filter("upper", filter_upper);
+    env.add_filter("lower", filter_lower);
+    env.add_filter("capitalize", filter_capitalize);
 }
 
 fn filter_date(value: Value, format: Option<String>) -> Result<String, minijinja::Error> {
@@ -33,8 +38,6 @@ pub fn filter_slugify(value: String) -> String {
         .map(|c| {
             if c.is_ascii_alphanumeric() {
                 c
-            } else if c == ' ' || c == '_' {
-                '-'
             } else {
                 '-'
             }
@@ -53,7 +56,7 @@ fn filter_truncate(value: String, length: Option<usize>) -> String {
         value
     } else {
         let mut s: String = chars[..len].iter().collect();
-        s.push('…');
+        s.push('\u{2026}');
         s
     }
 }
@@ -96,4 +99,29 @@ fn filter_json(value: Value) -> Result<String, minijinja::Error> {
 
 fn filter_active_class(value: Value) -> String {
     if value.is_true() { "active".into() } else { String::new() }
+}
+
+fn filter_md5(value: String) -> String {
+    let hash = Sha256::digest(value.as_bytes());
+    format!("{:x}", hash)
+}
+
+fn filter_upper(value: String) -> String {
+    value.to_uppercase()
+}
+
+fn filter_lower(value: String) -> String {
+    value.to_lowercase()
+}
+
+fn filter_capitalize(value: String) -> String {
+    let mut chars = value.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => {
+            let mut result = first.to_uppercase().to_string();
+            result.extend(chars);
+            result
+        }
+    }
 }

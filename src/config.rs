@@ -15,6 +15,10 @@ pub struct SiteConfig {
     pub feed: FeedConfig,
     #[serde(default)]
     pub sitemap: SitemapConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
+    #[serde(default)]
+    pub media: MediaConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,6 +146,21 @@ fn default_feed_formats() -> Vec<String> { vec!["rss".into(), "atom".into()] }
 fn default_feed_count() -> usize { 20 }
 fn default_change_freq() -> String { "weekly".into() }
 fn default_priority() -> f32 { 0.8 }
+fn default_jwt_secret() -> String { "CHANGE_ME_IN_PRODUCTION".into() }
+fn default_jwt_expires_in() -> String { "7d".into() }
+fn default_session_name() -> String { "cblog_session".into() }
+fn default_upload_dir() -> String { "media".into() }
+fn default_max_file_size() -> String { "10MB".into() }
+fn default_allowed_types() -> Vec<String> {
+    vec![
+        "image/jpeg".into(),
+        "image/png".into(),
+        "image/gif".into(),
+        "image/webp".into(),
+    ]
+}
+fn default_webp_quality() -> u8 { 85 }
+fn default_thumb_width() -> u32 { 400 }
 
 impl Default for RouteConfig {
     fn default() -> Self {
@@ -181,6 +200,58 @@ impl Default for SitemapConfig {
             enabled: true,
             change_freq: default_change_freq(),
             priority: default_priority(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuthConfig {
+    #[serde(default = "default_jwt_secret")]
+    pub jwt_secret: String,
+    #[serde(default = "default_jwt_expires_in")]
+    pub jwt_expires_in: String,
+    #[serde(default = "default_session_name")]
+    pub session_name: String,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            jwt_secret: default_jwt_secret(),
+            jwt_expires_in: default_jwt_expires_in(),
+            session_name: default_session_name(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MediaConfig {
+    #[serde(default = "default_upload_dir")]
+    pub upload_dir: String,
+    #[serde(default = "default_max_file_size")]
+    pub max_file_size: String,
+    #[serde(default = "default_allowed_types")]
+    pub allowed_types: Vec<String>,
+    #[serde(default = "default_true")]
+    pub auto_webp: bool,
+    #[serde(default = "default_webp_quality")]
+    pub webp_quality: u8,
+    #[serde(default = "default_true")]
+    pub generate_thumb: bool,
+    #[serde(default = "default_thumb_width")]
+    pub thumb_width: u32,
+}
+
+impl Default for MediaConfig {
+    fn default() -> Self {
+        Self {
+            upload_dir: default_upload_dir(),
+            max_file_size: default_max_file_size(),
+            allowed_types: default_allowed_types(),
+            auto_webp: true,
+            webp_quality: default_webp_quality(),
+            generate_thumb: true,
+            thumb_width: default_thumb_width(),
         }
     }
 }

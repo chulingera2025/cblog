@@ -4,7 +4,7 @@ use crate::config::SiteConfig;
 use anyhow::Result;
 use minijinja::Environment;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// 渲染所有页面到 public/ 目录
 pub fn render_pages(

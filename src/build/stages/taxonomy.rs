@@ -1,5 +1,6 @@
 use crate::config::SiteConfig;
 use crate::content::{Post, PostRef, TaxonomyIndex};
+use chrono::Datelike;
 use std::collections::HashMap;
 
 /// 构建标签、分类和时间归档索引
@@ -25,8 +26,8 @@ pub fn build_taxonomy(posts: &[Post], _config: &SiteConfig) -> TaxonomyIndex {
                 .push(post_ref.clone());
         }
 
-        let year = post.created_at.format("%Y").to_string().parse().unwrap_or(2024);
-        let month = post.created_at.format("%m").to_string().parse().unwrap_or(1);
+        let year = post.created_at.year();
+        let month = post.created_at.month();
         archives
             .entry((year, month))
             .or_default()

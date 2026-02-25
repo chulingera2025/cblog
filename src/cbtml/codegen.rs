@@ -116,6 +116,14 @@ fn generate_node(node: &Node, output: &mut String, _depth: usize) -> Result<()> 
         Node::Comment(_) => {
             // 注释不输出
         }
+        Node::Hook { name, data } => {
+            // hook 调用映射为 MiniJinja 函数调用
+            if data.is_empty() {
+                output.push_str(&format!("{{{{ hook(\"{}\") }}}}", name));
+            } else {
+                output.push_str(&format!("{{{{ hook(\"{}\", {}) }}}}", name, data));
+            }
+        }
     }
     Ok(())
 }

@@ -5,7 +5,6 @@ use crate::content::excerpt;
 use crate::content::{MarkdownContent, Post, PostStatus};
 use anyhow::Result;
 use chrono::Utc;
-use std::collections::HashMap;
 use std::path::Path;
 use ulid::Ulid;
 
@@ -78,7 +77,7 @@ fn load_single_post(path: &Path, config: &SiteConfig) -> Result<Post> {
     let md_content = MarkdownContent::new(parsed.body);
     let html = md_content.html().to_string();
 
-    let word_count = markdown::count_words(&html);
+    let word_count = markdown::count_words(&md_content.raw);
     let reading_time = markdown::reading_time(word_count);
     let toc = markdown::extract_toc(&md_content.raw);
     let auto_excerpt = excerpt::extract_excerpt(&html, config.build.excerpt_length);
@@ -101,6 +100,6 @@ fn load_single_post(path: &Path, config: &SiteConfig) -> Result<Post> {
         reading_time,
         word_count,
         toc,
-        meta: fm.extra.into_iter().map(|(k, v)| (k, v)).collect(),
+        meta: fm.extra,
     })
 }

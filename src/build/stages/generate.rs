@@ -1,5 +1,5 @@
 use crate::config::SiteConfig;
-use crate::content::{Post, PostRef, TaxonomyIndex};
+use crate::content::{Post, TaxonomyIndex};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]

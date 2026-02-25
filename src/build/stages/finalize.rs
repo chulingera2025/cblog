@@ -22,17 +22,15 @@ fn generate_sitemap(output_dir: &Path, config: &SiteConfig, posts: &[Post]) -> R
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
 
-    // 首页
     xml.push_str(&format!(
         "  <url>\n    <loc>{}/</loc>\n    <changefreq>{}</changefreq>\n    <priority>1.0</priority>\n  </url>\n",
-        config.site.url, config.sitemap.change_freq
+        xml_escape(&config.site.url), config.sitemap.change_freq
     ));
 
-    // 文章页
     for post in posts {
         xml.push_str(&format!(
             "  <url>\n    <loc>{}/posts/{}/</loc>\n    <lastmod>{}</lastmod>\n    <changefreq>{}</changefreq>\n    <priority>{}</priority>\n  </url>\n",
-            config.site.url,
+            xml_escape(&config.site.url),
             post.slug,
             post.updated_at.format("%Y-%m-%d"),
             config.sitemap.change_freq,
@@ -66,27 +64,49 @@ fn generate_rss(output_dir: &Path, config: &SiteConfig, posts: &[Post]) -> Resul
     xml.push_str("<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n");
     xml.push_str("  <channel>\n");
     xml.push_str(&format!("    <title>{}</title>\n", xml_escape(&config.site.title)));
-    xml.push_str(&format!("    <link>{}</link>\n", config.site.url));
-    xml.push_str(&format!("    <description>{}</description>\n", xml_escape(&config.site.description)));
+    xml.push_str(&format!("    <link>{}</link>\n", xml_escape(&config.site.url)));
+    xml.push_str(&format!(
+        "    <description>{}</description>\n",
+        xml_escape(&config.site.description)
+    ));
+    xml.push_str(&format!("    <language>{}</language>\n", config.site.language));
     xml.push_str(&format!(
         "    <atom:link href=\"{}/feed.xml\" rel=\"self\" type=\"application/rss+xml\" />\n",
-        config.site.url
+        xml_escape(&config.site.url)
     ));
+
+    if let Some(post) = posts.first() {
+        xml.push_str(&format!(
+            "    <lastBuildDate>{}</lastBuildDate>\n",
+            post.updated_at.to_rfc2822()
+        ));
+    }
 
     for post in posts {
         xml.push_str("    <item>\n");
         xml.push_str(&format!("      <title>{}</title>\n", xml_escape(&post.title)));
-        xml.push_str(&format!("      <link>{}/posts/{}/</link>\n", config.site.url, post.slug));
+        xml.push_str(&format!(
+            "      <link>{}/posts/{}/</link>\n",
+            xml_escape(&config.site.url),
+            post.slug
+        ));
         xml.push_str(&format!(
             "      <guid isPermaLink=\"true\">{}/posts/{}/</guid>\n",
-            config.site.url, post.slug
+            xml_escape(&config.site.url),
+            post.slug
         ));
         xml.push_str(&format!(
             "      <pubDate>{}</pubDate>\n",
-            post.created_at.format("%a, %d %b %Y %H:%M:%S %z")
+            post.created_at.to_rfc2822()
         ));
         if let Some(excerpt) = &post.excerpt {
-            xml.push_str(&format!("      <description>{}</description>\n", xml_escape(excerpt)));
+            xml.push_str(&format!(
+                "      <description>{}</description>\n",
+                xml_escape(excerpt)
+            ));
+        }
+        for tag in &post.tags {
+            xml.push_str(&format!("      <category>{}</category>\n", xml_escape(tag)));
         }
         xml.push_str("    </item>\n");
     }
@@ -101,12 +121,27 @@ fn generate_atom(output_dir: &Path, config: &SiteConfig, posts: &[Post]) -> Resu
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<feed xmlns=\"http://www.w3.org/2005/Atom\">\n");
     xml.push_str(&format!("  <title>{}</title>\n", xml_escape(&config.site.title)));
-    xml.push_str(&format!("  <link href=\"{}\" />\n", config.site.url));
+    xml.push_str(&format!("  <link href=\"{}\" />\n", xml_escape(&config.site.url)));
     xml.push_str(&format!(
-        "  <link href=\"{}/atom.xml\" rel=\"self\" />\n",
-        config.site.url
+        "  <link href=\"{}/atom.xml\" rel=\"self\" type=\"application/atom+xml\" />\n",
+        xml_escape(&config.site.url)
     ));
-    xml.push_str(&format!("  <id>{}/</id>\n", config.site.url));
+    xml.push_str(&format!("  <id>{}/</id>\n", xml_escape(&config.site.url)));
+
+    if !config.site.author.name.is_empty() {
+        xml.push_str("  <author>\n");
+        xml.push_str(&format!(
+            "    <name>{}</name>\n",
+            xml_escape(&config.site.author.name)
+        ));
+        if !config.site.author.email.is_empty() {
+            xml.push_str(&format!(
+                "    <email>{}</email>\n",
+                xml_escape(&config.site.author.email)
+            ));
+        }
+        xml.push_str("  </author>\n");
+    }
 
     if let Some(post) = posts.first() {
         xml.push_str(&format!(
@@ -120,11 +155,17 @@ fn generate_atom(output_dir: &Path, config: &SiteConfig, posts: &[Post]) -> Resu
         xml.push_str(&format!("    <title>{}</title>\n", xml_escape(&post.title)));
         xml.push_str(&format!(
             "    <link href=\"{}/posts/{}/\" />\n",
-            config.site.url, post.slug
+            xml_escape(&config.site.url),
+            post.slug
         ));
         xml.push_str(&format!(
             "    <id>{}/posts/{}/</id>\n",
-            config.site.url, post.slug
+            xml_escape(&config.site.url),
+            post.slug
+        ));
+        xml.push_str(&format!(
+            "    <published>{}</published>\n",
+            post.created_at.to_rfc3339()
         ));
         xml.push_str(&format!(
             "    <updated>{}</updated>\n",
@@ -134,6 +175,12 @@ fn generate_atom(output_dir: &Path, config: &SiteConfig, posts: &[Post]) -> Resu
             xml.push_str(&format!(
                 "    <summary>{}</summary>\n",
                 xml_escape(excerpt)
+            ));
+        }
+        if config.feed.full_content {
+            xml.push_str(&format!(
+                "    <content type=\"html\">{}</content>\n",
+                xml_escape(post.content.html())
             ));
         }
         xml.push_str("  </entry>\n");

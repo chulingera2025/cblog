@@ -36,6 +36,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # 哈希
 sha2 = "0.10"
+md-5 = "0.10"
 
 # 配置解析
 toml = "0.8"

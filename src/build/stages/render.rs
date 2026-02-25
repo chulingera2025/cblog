@@ -22,7 +22,7 @@ pub fn render_pages(
     let compiled_templates = compile_all_templates(&theme_dir)?;
 
     let mut env = Environment::new();
-    cbtml::filters::register_filters(&mut env);
+    cbtml::filters::register_filters(&mut env, &config.site.url);
 
     // 将编译后的模板逐个添加到环境中
     for (name, source) in &compiled_templates {
@@ -60,7 +60,12 @@ pub fn render_pages(
         let html = match tmpl.render(ctx_value) {
             Ok(html) => html,
             Err(e) => {
-                tracing::error!("渲染页面 {} 失败：{}", page.url, e);
+                tracing::error!(
+                    "渲染页面 {} 失败（模板：{}）：\n{}",
+                    page.url,
+                    template_name,
+                    e
+                );
                 continue;
             }
         };
@@ -111,7 +116,8 @@ fn collect_templates(
             let template_name = rel_path.to_string_lossy().to_string();
 
             let source = std::fs::read_to_string(&path)?;
-            let compiled = cbtml::compile(&source, &template_name)?;
+            let compiled = cbtml::compile(&source, &template_name)
+                .map_err(|e| e.context(format!("编译模板 {} 失败", template_name)))?;
 
             templates.insert(template_name, compiled);
         }

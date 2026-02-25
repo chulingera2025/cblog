@@ -30,7 +30,10 @@ pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<()> {
     // 阶段 5: page.render - 渲染所有页面
     stages::render::render_pages(project_root, config, &pages)?;
 
-    // 阶段 6: build.finalize - 收尾工作
+    // 阶段 6: asset.process - 编译 SCSS、复制主题资源
+    stages::assets::process_assets(project_root, config)?;
+
+    // 阶段 7: build.finalize - 收尾工作
     stages::finalize::finalize(project_root, config, &posts)?;
 
     let duration = start.elapsed();

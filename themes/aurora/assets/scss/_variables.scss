@@ -1,0 +1,19 @@
+// 主题配置变量（构建时由引擎注入覆盖）
+$primary-color: #6366f1 !default;
+$font-body: system-ui, -apple-system, sans-serif !default;
+$font-code: monospace !default;
+$dark-mode: auto !default;
+
+// 颜色衍生
+$primary-hover: darken($primary-color, 10%) !default;
+$primary-light: lighten($primary-color, 40%) !default;
+
+// 布局
+$max-width: 800px;
+$sidebar-width: 280px;
+
+// 间距
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 48px;

@@ -9,6 +9,7 @@ html [lang="{{ site.language }}"]
       h1
         a [href="/"] {{ site.title }}
       p {{ site.subtitle }}
+      include partials/nav
     main
       slot content
     footer

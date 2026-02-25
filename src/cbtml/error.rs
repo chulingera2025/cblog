@@ -1,24 +1,47 @@
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CbtmlError {
-    #[error("cbtml 编译错误\n  → {file}:{line}:{col}\n\n{context}\n  错误：{message}")]
+    #[error("{}", format_error("编译错误", file, *line, *col, context, message, hint))]
     CompileError {
         file: String,
         line: usize,
         col: usize,
         message: String,
         context: String,
+        hint: Option<String>,
     },
 
-    #[error("cbtml 语法错误\n  → {file}:{line}:{col}\n\n{context}\n  错误：{message}")]
+    #[error("{}", format_error("语法错误", file, *line, *col, context, message, hint))]
     SyntaxError {
         file: String,
         line: usize,
         col: usize,
         message: String,
         context: String,
+        hint: Option<String>,
     },
+}
+
+fn format_error(
+    kind: &str,
+    file: &str,
+    line: usize,
+    col: usize,
+    context: &str,
+    message: &str,
+    hint: &Option<String>,
+) -> String {
+    let mut out = format!("cbtml {kind}\n  → {file}:{line}:{col}\n\n");
+    if !context.is_empty() {
+        out.push_str(context);
+    }
+    out.push_str(&format!("  错误：{message}"));
+    if let Some(h) = hint {
+        out.push_str(&format!("\n  提示：{h}"));
+    }
+    out
 }
 
 impl CbtmlError {
@@ -30,6 +53,26 @@ impl CbtmlError {
             col,
             message: message.into(),
             context,
+            hint: None,
+        }
+    }
+
+    pub fn compile_with_hint(
+        file: &str,
+        line: usize,
+        col: usize,
+        message: impl Into<String>,
+        hint: impl fmt::Display,
+        source: &str,
+    ) -> Self {
+        let context = build_error_context(source, line);
+        Self::CompileError {
+            file: file.to_string(),
+            line,
+            col,
+            message: message.into(),
+            context,
+            hint: Some(hint.to_string()),
         }
     }
 
@@ -42,6 +85,7 @@ impl CbtmlError {
             col,
             message: message.into(),
             context,
+            hint: None,
         }
     }
 
@@ -53,6 +97,7 @@ impl CbtmlError {
             col,
             message: message.into(),
             context: String::new(),
+            hint: None,
         }
     }
 }

@@ -1,0 +1,6 @@
+extends base
+slot content
+  article.page
+    h1 {{ page.title }}
+    div.page-content
+      raw page.content

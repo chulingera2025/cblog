@@ -2,35 +2,6 @@ extends base
 slot content
   div.post-list
     for post in posts
-      article.post-card
-        h2
-          a [href="{{ post.url }}"] {{ post.title }}
-        div.post-meta
-          time {{ post.created_at }}
-          if post.category
-            span.category {{ post.category }}
-          end
-          span.reading-time {{ post.reading_time }} min read
-        if post.excerpt
-          p.excerpt {{ post.excerpt }}
-        end
-        if post.tags
-          div.tags
-            for tag in post.tags
-              span.tag {{ tag }}
-            end
-          end
-        end
-      end
+      include partials/post-card
     end
-  if pagination.total_pages > 1
-    nav.pagination
-      if pagination.prev
-        a [href="{{ pagination.prev }}"] 上一页
-      end
-      span {{ pagination.current }} / {{ pagination.total_pages }}
-      if pagination.next
-        a [href="{{ pagination.next }}"] 下一页
-      end
-    end
-  end
+  include partials/pagination

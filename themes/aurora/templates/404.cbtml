@@ -1,0 +1,6 @@
+extends base
+slot content
+  div.error-page
+    h1 404
+    p 页面未找到
+    a [href="/"] 返回首页

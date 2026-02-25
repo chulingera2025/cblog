@@ -1,11 +1,11 @@
 extends base
 slot content
   div.tag-archive
-    h1 标签：{{ tag }}
+    h1.archive-title 标签：{{ tag }}
     div.post-list
       for post in posts
-        article.post-card
-          h2
+        article.archive-item
+          time.archive-date {{ post.created_at | date }}
+          h2.archive-post-title
             a [href="{{ post.url }}"] {{ post.title }}
-          time {{ post.created_at }}
       end

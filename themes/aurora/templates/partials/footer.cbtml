@@ -1,0 +1,4 @@
+footer.site-footer
+  div.footer-inner
+    p © {{ site.title }}
+    p Powered by cblog

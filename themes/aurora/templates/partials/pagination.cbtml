@@ -1,0 +1,15 @@
+if pagination and pagination.total_pages > 1
+  nav.pagination
+    if pagination.prev
+      a.btn.btn-prev [href="{{ pagination.prev }}"] [rel="prev"] ← 较新文章
+    else
+      span.btn.btn-prev.disabled ← 较新文章
+    end
+    div.pagination-info
+      span {{ pagination.current }} / {{ pagination.total_pages }}
+    if pagination.next
+      a.btn.btn-next [href="{{ pagination.next }}"] [rel="next"] 较旧文章 →
+    else
+      span.btn.btn-next.disabled 较旧文章 →
+    end
+end

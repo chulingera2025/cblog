@@ -1,3 +1,6 @@
 nav.main-nav
-  a [href="/"] 首页
-  a [href="/archive/"] 归档
+  div.nav-inner
+    a.site-logo [href="/"] {{ site.title }}
+    div.nav-links
+      a [href="/"] 首页
+      a [href="/archive/"] 归档

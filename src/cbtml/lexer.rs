@@ -112,7 +112,7 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
                 line_idx += 1;
             }
             if !found_end {
-                return Err(CbtmlError::syntax_with_source(
+                return Err(CbtmlError::compile(
                     file_name,
                     comment_start_line,
                     indent_spaces + 1,
@@ -140,6 +140,17 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
             });
             line_idx += 1;
             continue;
+        }
+
+        // 独立行的 {{ 但没有 }} 闭合
+        if trimmed.starts_with("{{") && !trimmed.contains("}}") {
+            return Err(CbtmlError::compile(
+                file_name,
+                line_num,
+                indent_spaces + 1,
+                "未闭合的表达式，缺少 '}}'",
+                source,
+            ).into());
         }
 
         // extends 指令
@@ -345,7 +356,7 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         if trimmed.starts_with(|c: char| c.is_ascii_alphabetic()) {
             // 检查未闭合的属性括号
             if trimmed.contains('[') && !trimmed.contains(']') {
-                return Err(CbtmlError::syntax_with_source(
+                return Err(CbtmlError::compile(
                     file_name,
                     line_num,
                     indent_spaces + 1,

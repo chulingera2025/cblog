@@ -19,6 +19,8 @@ pub struct SiteConfig {
     pub auth: AuthConfig,
     #[serde(default)]
     pub media: MediaConfig,
+    #[serde(default)]
+    pub plugins: PluginConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -252,6 +254,20 @@ impl Default for MediaConfig {
             webp_quality: default_webp_quality(),
             generate_thumb: true,
             thumb_width: default_thumb_width(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PluginConfig {
+    #[serde(default)]
+    pub enabled: Vec<String>,
+}
+
+impl Default for PluginConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Vec::new(),
         }
     }
 }

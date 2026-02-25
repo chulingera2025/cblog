@@ -65,6 +65,9 @@ image = "0.25"
 # SCSS 编译
 grass = "0.13"
 
+# Lua 运行时
+mlua = { version = "0.11", features = ["lua54", "serde"] }
+
 # HTTP 中间件
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "cors"] }

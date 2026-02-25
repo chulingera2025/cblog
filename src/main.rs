@@ -6,7 +6,9 @@ mod build;
 mod cbtml;
 mod config;
 mod content;
+mod lua;
 mod media;
+mod plugin;
 mod state;
 mod theme;
 

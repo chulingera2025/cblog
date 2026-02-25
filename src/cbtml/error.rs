@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CbtmlError {
-    #[error("cbtml 编译错误\n  → {file}:{line}:{col}\n\n{context}\n\n  错误：{message}")]
+    #[error("cbtml 编译错误\n  → {file}:{line}:{col}\n\n{context}\n  错误：{message}")]
     CompileError {
         file: String,
         line: usize,
@@ -11,12 +11,13 @@ pub enum CbtmlError {
         context: String,
     },
 
-    #[error("cbtml 语法错误\n  → {file}:{line}:{col}\n\n  错误：{message}")]
+    #[error("cbtml 语法错误\n  → {file}:{line}:{col}\n\n{context}\n  错误：{message}")]
     SyntaxError {
         file: String,
         line: usize,
         col: usize,
         message: String,
+        context: String,
     },
 }
 
@@ -32,12 +33,26 @@ impl CbtmlError {
         }
     }
 
+    /// 在有源码的上下文中创建语法错误（如 lexer），包含上下文行
+    pub fn syntax_with_source(file: &str, line: usize, col: usize, message: impl Into<String>, source: &str) -> Self {
+        let context = build_error_context(source, line);
+        Self::SyntaxError {
+            file: file.to_string(),
+            line,
+            col,
+            message: message.into(),
+            context,
+        }
+    }
+
+    /// 在无源码的上下文中创建语法错误（如 parser），仅标注行列号
     pub fn syntax(file: &str, line: usize, col: usize, message: impl Into<String>) -> Self {
         Self::SyntaxError {
             file: file.to_string(),
             line,
             col,
             message: message.into(),
+            context: String::new(),
         }
     }
 }

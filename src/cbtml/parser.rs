@@ -151,6 +151,8 @@ fn parse_children(
                 let var = var.clone();
                 let collection = collection.clone();
                 let current_indent = token.indent;
+                let for_line = token.line;
+                let for_col = token.col;
                 *pos += 1;
                 let body = parse_block_body(tokens, pos, current_indent, file_name)?;
 
@@ -159,6 +161,13 @@ fn parse_children(
                     if let TokenKind::End = &tokens[*pos].kind {
                         *pos += 1;
                     }
+                } else {
+                    return Err(CbtmlError::syntax(
+                        file_name,
+                        for_line,
+                        for_col,
+                        "for 块缺少对应的 'end' 标签",
+                    ).into());
                 }
 
                 children.push(Node::ForLoop {
@@ -271,11 +280,14 @@ fn parse_conditional(tokens: &[Token], pos: &mut usize, file_name: &str) -> Resu
         _ => unreachable!(),
     };
     let if_indent = tokens[*pos].indent;
+    let if_line = tokens[*pos].line;
+    let if_col = tokens[*pos].col;
     *pos += 1;
 
     let then_branch = parse_block_body(tokens, pos, if_indent, file_name)?;
     let mut else_if_branches = Vec::new();
     let mut else_branch = None;
+    let mut found_end = false;
 
     // 处理 else if / else
     while *pos < tokens.len() && tokens[*pos].indent == if_indent {
@@ -293,10 +305,20 @@ fn parse_conditional(tokens: &[Token], pos: &mut usize, file_name: &str) -> Resu
             }
             TokenKind::End => {
                 *pos += 1;
+                found_end = true;
                 break;
             }
             _ => break,
         }
+    }
+
+    if !found_end {
+        return Err(CbtmlError::syntax(
+            file_name,
+            if_line,
+            if_col,
+            "if 块缺少对应的 'end' 标签",
+        ).into());
     }
 
     Ok(Node::Conditional {

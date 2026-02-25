@@ -13,13 +13,11 @@ pub fn render_pages(
     pages: &[RenderPage],
 ) -> Result<()> {
     let output_dir = project_root.join(&config.build.output_dir);
-    let theme_dir = project_root
-        .join("themes")
-        .join(&config.theme.active)
-        .join("templates");
+    let themes_dir = project_root.join("themes");
+    let active_theme = &config.theme.active;
 
     // 预编译所有 cbtml 模板为 MiniJinja 模板字符串
-    let compiled_templates = compile_all_templates(&theme_dir)?;
+    let compiled_templates = compile_all_templates(&themes_dir, active_theme)?;
 
     let mut env = Environment::new();
     cbtml::filters::register_filters(&mut env, &config.site.url);
@@ -89,14 +87,51 @@ pub fn render_pages(
     Ok(())
 }
 
-/// 递归扫描主题模板目录，将所有 .cbtml 文件编译为 MiniJinja 模板字符串
-fn compile_all_templates(theme_dir: &Path) -> Result<HashMap<String, String>> {
+/// 编译所有主题的模板。当前主题的模板以 `name.cbtml` 注册，
+/// 所有主题的模板额外以 `theme_name/name.cbtml` 注册以支持跨主题继承。
+fn compile_all_templates(
+    themes_dir: &Path,
+    active_theme: &str,
+) -> Result<HashMap<String, String>> {
     let mut templates = HashMap::new();
-    if !theme_dir.exists() {
-        tracing::warn!("主题模板目录不存在：{}", theme_dir.display());
+
+    if !themes_dir.exists() {
+        tracing::warn!("主题目录不存在：{}", themes_dir.display());
         return Ok(templates);
     }
-    collect_templates(theme_dir, theme_dir, &mut templates)?;
+
+    for entry in std::fs::read_dir(themes_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let theme_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(name) => name.to_string(),
+            None => continue,
+        };
+
+        let template_dir = path.join("templates");
+        if !template_dir.exists() {
+            continue;
+        }
+
+        let mut theme_templates = HashMap::new();
+        collect_templates(&template_dir, &template_dir, &mut theme_templates)?;
+
+        for (rel_name, compiled) in theme_templates {
+            // 以 theme_name/template.cbtml 格式注册，供跨主题继承使用
+            let namespaced = format!("{}/{}", theme_name, rel_name);
+            templates.insert(namespaced, compiled.clone());
+
+            // 当前活跃主题的模板同时以短名注册，作为默认模板
+            if theme_name == active_theme {
+                templates.insert(rel_name, compiled);
+            }
+        }
+    }
+
     Ok(templates)
 }
 

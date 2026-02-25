@@ -94,19 +94,31 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
                 continue;
             }
             // 多行注释：收集直到 #}
+            let comment_start_line = line_num;
             let mut comment = trimmed[2..].to_string();
             line_idx += 1;
+            let mut found_end = false;
             while line_idx < lines.len() {
                 let next = lines[line_idx];
                 if let Some(end) = next.find("#}") {
                     comment.push('\n');
                     comment.push_str(next[..end].trim());
                     line_idx += 1;
+                    found_end = true;
                     break;
                 }
                 comment.push('\n');
                 comment.push_str(next.trim());
                 line_idx += 1;
+            }
+            if !found_end {
+                return Err(CbtmlError::syntax_with_source(
+                    file_name,
+                    comment_start_line,
+                    indent_spaces + 1,
+                    "未闭合的多行注释，缺少 '#}'",
+                    source,
+                ).into());
             }
             tokens.push(Token {
                 kind: TokenKind::Comment(comment.trim().to_string()),
@@ -206,11 +218,12 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
                     col: indent_spaces + 1,
                 });
             } else {
-                return Err(CbtmlError::syntax(
+                return Err(CbtmlError::syntax_with_source(
                     file_name,
                     line_num,
                     indent_spaces + 1,
                     format!("for 语句缺少 'in' 关键字: {trimmed}"),
+                    source,
                 ).into());
             }
             line_idx += 1;
@@ -330,6 +343,16 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
 
         // 元素声明：以合法 HTML 标签名开头
         if trimmed.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            // 检查未闭合的属性括号
+            if trimmed.contains('[') && !trimmed.contains(']') {
+                return Err(CbtmlError::syntax_with_source(
+                    file_name,
+                    line_num,
+                    indent_spaces + 1,
+                    "未闭合的属性括号，缺少 ']'",
+                    source,
+                ).into());
+            }
             if let Some(token) = parse_element(trimmed, indent, line_num, indent_spaces + 1) {
                 tokens.push(token);
                 line_idx += 1;
@@ -439,8 +462,8 @@ fn parse_element(s: &str, indent: usize, line: usize, col: usize) -> Option<Toke
         chars.next();
     }
 
-    // 解析属性 [attr="val" attr2={{ expr }}]
-    if let Some(&'[') = chars.peek() {
+    // 解析属性块，支持多个 [attr="val"] [attr2="val2"] 形式
+    while let Some(&'[') = chars.peek() {
         chars.next();
         loop {
             // 跳过空格
@@ -537,7 +560,7 @@ fn parse_element(s: &str, indent: usize, line: usize, col: usize) -> Option<Toke
             }
         }
 
-        // 跳过空格
+        // 跳过属性块之间的空格，以便检查下一个 [
         while let Some(&' ') = chars.peek() {
             chars.next();
         }

@@ -333,16 +333,15 @@ fn parse_block_body(
         }
 
         // 缩进比控制块深的内容属于这个块
-        if token.indent > block_indent {
-            // 以当前 token 的缩进层级递归解析
-            let inner = parse_children(tokens, pos, token.indent, file_name)?;
-            children.extend(inner);
-            continue;
-        }
-
-        // 同级但不是边界 token，作为块体内容解析
-        let inner = parse_children(tokens, pos, token.indent, file_name)?;
+        let saved_pos = *pos;
+        let target_indent = token.indent;
+        let inner = parse_children(tokens, pos, target_indent, file_name)?;
         children.extend(inner);
+
+        // 防止死循环：如果 parse_children 没推进 pos，手动跳过
+        if *pos == saved_pos {
+            *pos += 1;
+        }
     }
 
     Ok(children)

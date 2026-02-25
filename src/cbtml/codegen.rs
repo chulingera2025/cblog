@@ -12,7 +12,7 @@ fn generate_node(node: &Node, output: &mut String, _depth: usize) -> Result<()> 
     match node {
         Node::Document { extends, children } => {
             if let Some(parent) = extends {
-                output.push_str(&format!("{{% extends \"{}\" %}}\n", parent));
+                output.push_str(&format!("{{% extends \"{}.cbtml\" %}}\n", parent));
             }
             for child in children {
                 generate_node(child, output, 0)?;

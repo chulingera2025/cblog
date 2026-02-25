@@ -36,7 +36,7 @@ pub fn filter_slugify(value: String) -> String {
         .to_lowercase()
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() {
+            if c.is_alphanumeric() {
                 c
             } else {
                 '-'

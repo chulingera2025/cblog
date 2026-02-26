@@ -1,6 +1,12 @@
-/// 解析 Markdown 为 HTML
+use syntect::html::{ClassStyle, ClassedHTMLGenerator};
+use syntect::parsing::SyntaxSet;
+use syntect::util::LinesWithEndings;
+
+/// 解析 Markdown 为 HTML，代码块使用 syntect 生成带 CSS class 的高亮
 pub fn render_markdown(source: &str) -> String {
-    use pulldown_cmark::{Options, Parser, html};
+    use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
+
+    let syntax_set = SyntaxSet::load_defaults_newlines();
 
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -9,9 +15,78 @@ pub fn render_markdown(source: &str) -> String {
     options.insert(Options::ENABLE_TASKLISTS);
 
     let parser = Parser::new_ext(source, options);
+
+    let mut in_code_block = false;
+    let mut code_lang = String::new();
+    let mut code_text = String::new();
+
+    let mut events: Vec<Event> = Vec::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::CodeBlock(kind)) => {
+                in_code_block = true;
+                code_text.clear();
+                code_lang = match &kind {
+                    CodeBlockKind::Fenced(lang) => lang.to_string(),
+                    CodeBlockKind::Indented => String::new(),
+                };
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                in_code_block = false;
+                let highlighted = if !code_lang.is_empty() {
+                    highlight_code(&syntax_set, &code_text, &code_lang)
+                } else {
+                    None
+                };
+
+                match highlighted {
+                    Some(html) => {
+                        events.push(Event::Html(CowStr::from(html)));
+                    }
+                    None => {
+                        let escaped = html_escape_code(&code_text);
+                        let lang_escaped = html_escape_code(&code_lang);
+                        let html = format!(
+                            "<pre><code class=\"language-{lang_escaped}\">{escaped}</code></pre>"
+                        );
+                        events.push(Event::Html(CowStr::from(html)));
+                    }
+                }
+            }
+            Event::Text(text) if in_code_block => {
+                code_text.push_str(&text);
+            }
+            _ => {
+                events.push(event);
+            }
+        }
+    }
+
     let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
+    html::push_html(&mut html_output, events.into_iter());
     html_output
+}
+
+fn highlight_code(syntax_set: &SyntaxSet, code: &str, lang: &str) -> Option<String> {
+    let syntax = syntax_set.find_syntax_by_token(lang)?;
+    let mut generator =
+        ClassedHTMLGenerator::new_with_class_style(syntax, syntax_set, ClassStyle::Spaced);
+    for line in LinesWithEndings::from(code) {
+        generator
+            .parse_html_for_line_which_includes_newline(line)
+            .ok()?;
+    }
+    let highlighted = generator.finalize();
+    Some(format!(
+        "<pre class=\"code-highlight\"><code class=\"language-{lang}\">{highlighted}</code></pre>"
+    ))
+}
+
+fn html_escape_code(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// 从 Markdown 内容提取 TOC（目录 HTML）

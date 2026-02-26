@@ -5,6 +5,31 @@ use crate::config::SiteConfig;
 use anyhow::Result;
 use std::path::Path;
 
+fn serialize_posts(posts: &[crate::content::Post]) -> serde_json::Value {
+    serde_json::json!(posts
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "id": p.id.to_string(),
+                "slug": &p.slug,
+                "title": &p.title,
+                "url": format!("/posts/{}/", p.slug),
+                "content": p.content.html(),
+                "tags": &p.tags,
+                "category": &p.category,
+                "excerpt": &p.excerpt,
+                "created_at": p.created_at.to_rfc3339(),
+                "updated_at": p.updated_at.to_rfc3339(),
+                "toc": &p.toc,
+                "cover_image": &p.cover_image,
+                "author": &p.author,
+                "reading_time": p.reading_time,
+                "word_count": p.word_count,
+            })
+        })
+        .collect::<Vec<_>>())
+}
+
 /// 执行完整构建管道
 pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<BuildStats> {
     tracing::info!("开始构建...");
@@ -43,7 +68,11 @@ pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<BuildStats> {
     tracing::info!("加载了 {} 篇文章", posts.len());
 
     if let Some(ref eng) = engine {
-        eng.hooks.call_action(&eng.lua, "after_load", &ctx)?;
+        let load_ctx = serde_json::json!({
+            "project_root": project_root.to_string_lossy(),
+            "posts": serialize_posts(&posts),
+        });
+        eng.hooks.call_action(&eng.lua, "after_load", &load_ctx)?;
     }
 
     // 阶段 2: content.parse - 已在加载阶段完成（Front Matter + Markdown）
@@ -90,7 +119,14 @@ pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<BuildStats> {
     stages::finalize::finalize(project_root, config, &posts)?;
 
     if let Some(ref eng) = engine {
-        eng.hooks.call_action(&eng.lua, "after_finalize", &ctx)?;
+        let finalize_ctx = serde_json::json!({
+            "project_root": project_root.to_string_lossy(),
+            "output_dir": project_root.join(&config.build.output_dir).to_string_lossy(),
+            "posts": serialize_posts(&posts),
+            "site_url": &config.site.url,
+        });
+        eng.hooks
+            .call_action(&eng.lua, "after_finalize", &finalize_ctx)?;
     }
 
     // 更新配置文件哈希

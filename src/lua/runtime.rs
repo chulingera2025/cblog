@@ -144,6 +144,39 @@ impl PluginEngine {
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        // cblog.highlight(code, language) — syntect 代码高亮
+        cblog
+            .set(
+                "highlight",
+                lua.create_function(|_, (code, lang): (String, String)| {
+                    use syntect::html::{ClassStyle, ClassedHTMLGenerator};
+                    use syntect::parsing::SyntaxSet;
+                    use syntect::util::LinesWithEndings;
+
+                    let ss = SyntaxSet::load_defaults_newlines();
+                    let syntax = match ss.find_syntax_by_token(&lang) {
+                        Some(s) => s,
+                        None => return Ok(code),
+                    };
+                    let mut generator = ClassedHTMLGenerator::new_with_class_style(
+                        syntax,
+                        &ss,
+                        ClassStyle::Spaced,
+                    );
+                    for line in LinesWithEndings::from(&code) {
+                        if generator
+                            .parse_html_for_line_which_includes_newline(line)
+                            .is_err()
+                        {
+                            return Ok(code);
+                        }
+                    }
+                    Ok(generator.finalize())
+                })
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         // cblog.version_lt(v1, v2) — 语义版本比较 v1 < v2
         cblog
             .set(

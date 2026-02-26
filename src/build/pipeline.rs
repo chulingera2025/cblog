@@ -1,12 +1,25 @@
+use crate::build::graph::DepGraph;
+use crate::build::incremental::{BuildStats, HashCache};
 use crate::build::stages;
 use crate::config::SiteConfig;
 use anyhow::Result;
 use std::path::Path;
 
 /// 执行完整构建管道
-pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<()> {
+pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<BuildStats> {
     tracing::info!("开始构建...");
     let start = std::time::Instant::now();
+
+    let cache_dir = project_root.join(&config.build.cache_dir);
+    let mut hash_cache = HashCache::load(&cache_dir);
+    let mut dep_graph = DepGraph::load(&cache_dir);
+
+    // 配置文件变更时记录日志（后续迭代用于决定全量重建）
+    match hash_cache.config_changed(project_root) {
+        Ok(true) => tracing::info!("cblog.toml 已变更，将执行全量重建"),
+        Ok(false) => tracing::debug!("cblog.toml 未变更"),
+        Err(e) => tracing::warn!("检测配置变更失败：{}", e),
+    }
 
     // 初始化插件引擎（仅在有启用插件时）
     let engine = if !config.plugins.enabled.is_empty() {
@@ -50,7 +63,14 @@ pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<()> {
 
     // 阶段 4: page.generate - 生成页面列表
     let pages = stages::generate::generate_pages(&posts, &taxonomy, config);
-    tracing::info!("生成了 {} 个页面", pages.len());
+    let total_pages = pages.len();
+    tracing::info!("生成了 {} 个页面", total_pages);
+
+    // 重建依赖图
+    dep_graph.clear();
+    for page in &pages {
+        dep_graph.add_dependency(&page.template, &page.url);
+    }
 
     // 阶段 5: page.render - 渲染所有页面
     stages::render::render_pages(project_root, config, &pages)?;
@@ -73,8 +93,28 @@ pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<()> {
         eng.hooks.call_action(&eng.lua, "after_finalize", &ctx)?;
     }
 
+    // 更新配置文件哈希
+    let config_path = project_root.join("cblog.toml");
+    if config_path.exists() {
+        if let Ok(hash) = HashCache::compute_hash(&config_path) {
+            hash_cache.update("cblog.toml".to_owned(), hash);
+        }
+    }
+
+    // 持久化缓存
+    if let Err(e) = hash_cache.save() {
+        tracing::warn!("保存哈希缓存失败：{}", e);
+    }
+    if let Err(e) = dep_graph.save() {
+        tracing::warn!("保存依赖图失败：{}", e);
+    }
+
     let duration = start.elapsed();
     tracing::info!("构建完成，耗时 {:.2}s", duration.as_secs_f64());
 
-    Ok(())
+    Ok(BuildStats {
+        total_pages,
+        rebuilt: total_pages,
+        cached: 0,
+    })
 }

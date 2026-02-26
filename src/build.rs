@@ -1,11 +1,15 @@
+pub mod events;
+pub mod graph;
+pub mod incremental;
 pub mod pipeline;
 pub mod stages;
 
 use crate::config::SiteConfig;
 use anyhow::Result;
+use incremental::BuildStats;
 use std::path::Path;
 
-pub fn run(project_root: &Path, config: &SiteConfig, clean: bool) -> Result<()> {
+pub fn run(project_root: &Path, config: &SiteConfig, clean: bool) -> Result<BuildStats> {
     let output_dir = project_root.join(&config.build.output_dir);
 
     if clean {
@@ -22,7 +26,7 @@ pub fn run(project_root: &Path, config: &SiteConfig, clean: bool) -> Result<()> 
 
     std::fs::create_dir_all(&output_dir)?;
 
-    pipeline::execute(project_root, config)?;
+    let stats = pipeline::execute(project_root, config)?;
 
-    Ok(())
+    Ok(stats)
 }

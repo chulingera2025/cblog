@@ -3,8 +3,11 @@ use crate::cbtml;
 use crate::config::SiteConfig;
 use anyhow::Result;
 use minijinja::Environment;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 /// 渲染所有页面到 public/ 目录
 pub fn render_pages(
@@ -41,13 +44,16 @@ pub fn render_pages(
         },
     });
 
-    for page in pages {
+    let rendered_count = AtomicUsize::new(0);
+    let errors: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    pages.par_iter().for_each(|page| {
         let template_name = format!("{}.cbtml", page.template);
         let tmpl = match env.get_template(&template_name) {
             Ok(t) => t,
             Err(_) => {
                 tracing::warn!("模板 {} 不存在，跳过页面 {}", template_name, page.url);
-                continue;
+                return;
             }
         };
 
@@ -58,13 +64,13 @@ pub fn render_pages(
         let html = match tmpl.render(ctx_value) {
             Ok(html) => html,
             Err(e) => {
-                tracing::error!(
+                let msg = format!(
                     "渲染页面 {} 失败（模板：{}）：\n{}",
-                    page.url,
-                    template_name,
-                    e
+                    page.url, template_name, e
                 );
-                continue;
+                tracing::error!("{}", msg);
+                errors.lock().unwrap().push(msg);
+                return;
             }
         };
 
@@ -77,13 +83,36 @@ pub fn render_pages(
         };
 
         if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                errors
+                    .lock()
+                    .unwrap()
+                    .push(format!("创建目录失败 {}: {}", parent.display(), e));
+                return;
+            }
         }
-        std::fs::write(&file_path, html)?;
+        if let Err(e) = std::fs::write(&file_path, html) {
+            errors
+                .lock()
+                .unwrap()
+                .push(format!("写入文件失败 {}: {}", file_path.display(), e));
+            return;
+        }
+
+        rendered_count.fetch_add(1, Ordering::Relaxed);
         tracing::debug!("已写入：{}", file_path.display());
+    });
+
+    let errs = errors.into_inner().unwrap();
+    if !errs.is_empty() {
+        tracing::warn!("渲染过程中有 {} 个错误", errs.len());
     }
 
-    tracing::info!("渲染完成，共 {} 个页面", pages.len());
+    tracing::info!(
+        "渲染完成，共 {} 个页面（成功 {}）",
+        pages.len(),
+        rendered_count.load(Ordering::Relaxed)
+    );
     Ok(())
 }
 

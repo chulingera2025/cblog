@@ -7,6 +7,7 @@ mod cbtml;
 mod check;
 mod config;
 mod content;
+mod init;
 mod lua;
 mod media;
 mod plugin;
@@ -17,7 +18,7 @@ mod theme;
 #[command(name = "cblog", about = "Rust + Lua 博客引擎")]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -48,12 +49,6 @@ enum Commands {
         port: Option<u16>,
     },
 
-    /// 初始化新项目
-    Init {
-        /// 项目目录名
-        name: String,
-    },
-
     /// 检查项目完整性
     Check {
         /// 项目根目录（默认当前目录）
@@ -65,8 +60,15 @@ enum Commands {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // None 等同于 Serve { root: ".", host: None, port: None }
+    let command = cli.command.unwrap_or(Commands::Serve {
+        root: PathBuf::from("."),
+        host: None,
+        port: None,
+    });
+
     // 对于需要加载配置的命令，使用配置中的日志级别作为默认值
-    let default_level = match &cli.command {
+    let default_level = match &command {
         Commands::Build { root, .. }
         | Commands::Serve { root, .. }
         | Commands::Check { root, .. } => {
@@ -74,7 +76,6 @@ fn main() -> anyhow::Result<()> {
                 .ok()
                 .map(|c| c.server.log_level.clone())
         }
-        _ => None,
     };
 
     let default_level = default_level.as_deref().unwrap_or("info");
@@ -86,14 +87,20 @@ fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    match cli.command {
+    match command {
         Commands::Build { clean, root } => {
             let root = root.canonicalize()?;
+            if init::ensure_initialized(&root)? {
+                tracing::info!("已自动初始化项目");
+            }
             let site_config = config::SiteConfig::load(&root)?;
             let _stats = build::run(&root, &site_config, clean)?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;
+            if init::ensure_initialized(&root)? {
+                tracing::info!("已自动初始化项目");
+            }
             let site_config = config::SiteConfig::load(&root)?;
 
             let host = host.unwrap_or_else(|| site_config.server.host.clone());
@@ -105,11 +112,6 @@ fn main() -> anyhow::Result<()> {
                 .block_on(async move {
                     run_server(root, site_config, &host, port).await
                 })?;
-        }
-        Commands::Init { name } => {
-            // TODO!!! 实现 init 命令：创建项目目录、默认 cblog.toml、示例主题和内容
-            tracing::info!("初始化项目：{}", name);
-            anyhow::bail!("init 命令尚未实现");
         }
         Commands::Check { root } => {
             let root = root.canonicalize()?;

@@ -1,4 +1,4 @@
-html [lang="{{ site.language }}"]
+html [lang="{{ site.language }}"] [data-theme="{{ config.dark_mode | default('auto') }}"]
   head
     meta [charset="utf-8"]
     meta [name="viewport"] [content="width=device-width, initial-scale=1"]
@@ -10,7 +10,7 @@ html [lang="{{ site.language }}"]
     if config.custom_head_html
       raw config.custom_head_html
     end
-  body [data-theme="{{ config.dark_mode | default('auto') }}"]
+  body
     include partials/nav
     main.site-main
       slot content

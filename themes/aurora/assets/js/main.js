@@ -5,16 +5,16 @@
   function getPreferredTheme() {
     var stored = localStorage.getItem('theme');
     if (stored) return stored;
-    var dataTheme = document.body.getAttribute('data-theme');
+    var dataTheme = document.documentElement.getAttribute('data-theme');
     if (dataTheme && dataTheme !== 'auto') return dataTheme;
     return 'auto';
   }
 
   function applyTheme(theme) {
     if (theme === 'auto') {
-      document.body.removeAttribute('data-theme');
+      document.documentElement.removeAttribute('data-theme');
     } else {
-      document.body.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-theme', theme);
     }
   }
 

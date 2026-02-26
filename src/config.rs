@@ -3,6 +3,7 @@ use serde::Deserialize;
 use std::path::Path;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SiteConfig {
     pub site: SiteInfo,
     pub build: BuildConfig,
@@ -24,6 +25,7 @@ pub struct SiteConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct SiteInfo {
     pub title: String,
     #[serde(default)]
@@ -53,6 +55,7 @@ pub struct AuthorInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct BuildConfig {
     #[serde(default = "default_output_dir")]
     pub output_dir: String,
@@ -74,6 +77,7 @@ pub struct ThemeRef {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct RouteConfig {
     #[serde(default = "default_post_url")]
     pub post_url: String,
@@ -227,6 +231,7 @@ impl Default for AuthConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct MediaConfig {
     #[serde(default = "default_upload_dir")]
     pub upload_dir: String,

@@ -16,6 +16,7 @@ use std::time::Duration;
 // ── 数据结构 ──
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct AuthUser {
     pub id: String,
     pub username: String,

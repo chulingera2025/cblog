@@ -34,12 +34,14 @@ impl MarkdownContent {
         self.html.get_or_init(|| markdown::render_markdown(&self.raw))
     }
 
+    #[allow(dead_code)]
     pub fn set_html(&self, html: String) {
         let _ = self.html.set(html);
     }
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Post {
     pub id: Ulid,
     pub slug: String,
@@ -62,6 +64,7 @@ pub struct Post {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct Page {
     pub id: Ulid,
     pub slug: String,

@@ -5,6 +5,7 @@ use std::collections::HashMap;
 /// 插件 KV 存储操作（基于 plugin_store 表）
 pub struct PluginStore;
 
+#[allow(dead_code)]
 impl PluginStore {
     /// 获取指定插件的某个 key
     pub async fn get(db: &SqlitePool, plugin_name: &str, key: &str) -> Result<Option<serde_json::Value>> {

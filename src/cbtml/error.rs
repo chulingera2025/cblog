@@ -57,6 +57,7 @@ impl CbtmlError {
         }
     }
 
+    #[allow(dead_code)]
     pub fn compile_with_hint(
         file: &str,
         line: usize,

@@ -11,8 +11,8 @@ pub struct ThemeToml {
     pub config: Vec<ConfigField>,
 }
 
-/// [theme] 元数据
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ThemeMeta {
     pub name: String,
     #[serde(default)]
@@ -47,8 +47,8 @@ pub struct ConfigField {
     pub description: Option<String>,
 }
 
-/// 解析后的完整主题（已合并父主题配置项）
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ResolvedTheme {
     pub name: String,
     pub meta: ThemeMeta,

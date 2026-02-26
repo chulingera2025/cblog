@@ -14,6 +14,7 @@ pub struct PluginToml {
 
 /// [plugin] 元数据
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct PluginMeta {
     pub name: String,
     #[serde(default)]

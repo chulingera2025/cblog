@@ -38,6 +38,7 @@ impl DepGraph {
     }
 
     /// 获取使用了某个模板的所有页面 URL
+    #[allow(dead_code)]
     pub fn get_affected_pages(&self, template: &str) -> Vec<&str> {
         self.deps
             .get(template)

@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum BuildTask {
     FullRebuild,
     Manual,
@@ -9,6 +10,7 @@ pub enum BuildTask {
 /// 构建进度事件（通过 WebSocket 推送到前端）
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 pub enum BuildEvent {
     Started {
         trigger: String,

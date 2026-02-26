@@ -50,6 +50,7 @@ pub enum Node {
     /// <script> 原生块
     Script(String),
     /// {# 注释 #} - 编译期移除
+    #[allow(dead_code)]
     Comment(String),
     /// hook 调用
     Hook { name: String, data: String },

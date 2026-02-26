@@ -32,6 +32,7 @@ impl HookRegistry {
     }
 
     /// 执行 filter hook：数据依次流经所有按优先级排序的处理器
+    #[allow(dead_code)]
     pub fn apply_filter<T>(
         &self,
         lua: &mlua::Lua,
@@ -106,6 +107,7 @@ impl HookRegistry {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn has_handlers(&self, hook: &str) -> bool {
         self.filters
             .get(hook)

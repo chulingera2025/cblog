@@ -42,6 +42,8 @@ const TPL_PAGINATION: &str = include_str!("../themes/aurora/templates/partials/p
 const SCSS_VARIABLES: &str = include_str!("../themes/aurora/assets/scss/_variables.scss");
 const SCSS_MAIN: &str = include_str!("../themes/aurora/assets/scss/main.scss");
 
+const JS_MAIN: &str = include_str!("../themes/aurora/assets/js/main.js");
+
 /// 检测项目是否已初始化，未初始化则自动创建骨架。
 /// 返回 `true` 表示执行了初始化，`false` 表示已存在。
 pub fn ensure_initialized(root: &Path) -> Result<bool> {
@@ -55,6 +57,7 @@ pub fn ensure_initialized(root: &Path) -> Result<bool> {
         "content/pages",
         "themes/aurora/templates/partials",
         "themes/aurora/assets/scss",
+        "themes/aurora/assets/js",
         "plugins",
         "media",
     ];
@@ -88,6 +91,7 @@ pub fn ensure_initialized(root: &Path) -> Result<bool> {
         ),
         ("themes/aurora/assets/scss/_variables.scss", SCSS_VARIABLES),
         ("themes/aurora/assets/scss/main.scss", SCSS_MAIN),
+        ("themes/aurora/assets/js/main.js", JS_MAIN),
     ];
 
     for (path, content) in theme_files {

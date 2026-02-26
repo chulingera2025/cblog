@@ -2,6 +2,7 @@
 name = "cblog"
 version = "0.1.0"
 edition = "2024"
+authors = ["chulingera2025"]
 description = "Rust + Lua 博客引擎：后台动态，前台全静态 SSG"
 
 [dependencies]
@@ -69,8 +70,9 @@ image = "0.25"
 grass = "0.13"
 
 # Lua 运行时
-mlua = { version = "0.11", features = ["lua54", "serde"] }
+mlua = { version = "0.11", features = ["lua54", "serde", "vendored"] }
 
 # HTTP 中间件
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "cors"] }
+regex = "1.12.3"

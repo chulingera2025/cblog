@@ -3,6 +3,7 @@ use axum::response::{Html, IntoResponse, Json, Redirect};
 use serde::{Deserialize, Serialize};
 use std::path;
 
+use crate::admin::layout::{admin_page, html_escape, svg_icon, PageContext};
 use crate::media::{process, upload};
 use crate::state::AppState;
 
@@ -23,52 +24,6 @@ struct MediaItem {
     url: String,
     thumb_url: Option<String>,
     uploaded_at: String,
-}
-
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1200px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-danger { background:#e74c3c; color:#fff; }
-        .btn-secondary { background:#6c757d; color:#fff; }
-        label { display:block; margin-bottom:4px; font-weight:500; }
-        input[type=file] { margin-bottom:12px; }
-        .media-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
-        .media-card { background:#fff; border-radius:6px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        .media-card img { width:100%; height:160px; object-fit:cover; display:block; background:#eee; }
-        .media-card .file-icon { width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:#e8e8e8; font-size:48px; color:#999; }
-        .media-card .info { padding:10px; }
-        .media-card .info .filename { font-size:13px; font-weight:500; word-break:break-all; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .media-card .info .meta { font-size:11px; color:#888; margin-bottom:6px; }
-        .media-card .info .actions { display:flex; gap:6px; align-items:center; }
-        .media-card .info .actions a,
-        .media-card .info .actions button { font-size:12px; padding:2px 8px; }
-        .alert { padding:10px 16px; border-radius:4px; margin-bottom:16px; }
-        .alert-error { background:#fce4e4; color:#c0392b; border:1px solid #e74c3c; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 pub async fn list_media(
@@ -107,7 +62,7 @@ pub async fn list_media(
         };
 
         let size_display = upload::format_size(item.size_bytes as usize);
-        let date = &item.uploaded_at[..10.min(item.uploaded_at.len())];
+        let date = crate::admin::layout::format_datetime(&item.uploaded_at);
 
         cards.push_str(&format!(
             r#"<div class="media-card">
@@ -116,9 +71,9 @@ pub async fn list_media(
                     <div class="filename" title="{original_name}">{original_name}</div>
                     <div class="meta">{size} &middot; {date}</div>
                     <div class="actions">
-                        <a href="{url}" target="_blank" class="btn btn-secondary">查看</a>
-                        <form method="POST" action="/admin/media/{id}/delete" style="display:inline;" onsubmit="return confirm('确定删除此文件？')">
-                            <button type="submit" class="btn btn-danger">删除</button>
+                        <a href="{url}" target="_blank" class="btn btn-secondary btn-sm">查看</a>
+                        <form method="POST" action="/admin/media/{id}/delete" onsubmit="confirmAction('删除文件', '确定要删除此文件吗？', this); return false;">
+                            <button type="submit" class="btn btn-danger btn-sm">删除</button>
                         </form>
                     </div>
                 </div>
@@ -136,68 +91,81 @@ pub async fn list_media(
         let mut p = String::new();
         if page > 1 {
             p.push_str(&format!(
-                r#"<a href="/admin/media?page={}" class="btn btn-secondary">上一页</a>"#,
+                r#"<a href="/admin/media?page={}" class="btn btn-secondary btn-sm">上一页</a>"#,
                 page - 1
             ));
         }
         if rows.len() as u32 == per_page {
             p.push_str(&format!(
-                r#"<a href="/admin/media?page={}" class="btn btn-secondary">下一页</a>"#,
+                r#"<a href="/admin/media?page={}" class="btn btn-secondary btn-sm">下一页</a>"#,
                 page + 1
             ));
         }
         p
     };
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>媒体库</title>{style}</head>
-        <body>{nav}
-        <div class="container">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h1>媒体库</h1>
-                <a href="/admin/media/upload" class="btn btn-primary">上传文件</a>
-            </div>
-            <div class="media-grid">{cards}</div>
-            <div style="margin-top:16px;display:flex;gap:8px;">
-                {pagination}
-            </div>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+    let body = format!(
+        r#"<div class="page-header">
+            <h1 class="page-title">媒体库</h1>
+            <a href="/admin/media/upload" class="btn btn-primary">{icon} 上传文件</a>
+        </div>
+        <div class="media-grid">{cards}</div>
+        <div class="pagination">
+            {pagination}
+        </div>"#,
+        icon = svg_icon("upload"),
         cards = cards,
         pagination = pagination,
     );
 
-    Html(html)
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
+    Html(admin_page("媒体库", "/admin/media", &body, &ctx))
 }
 
-pub async fn upload_page() -> Html<String> {
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>上传文件</title>{style}</head>
-        <body>{nav}
-        <div class="container" style="max-width:600px;">
-            <h1>上传文件</h1>
-            <form method="POST" action="/admin/media/upload" enctype="multipart/form-data">
-                <div style="margin-bottom:12px;">
-                    <label>选择文件</label>
-                    <input type="file" name="file" required accept="image/*">
-                </div>
-                <div style="margin-top:16px;">
-                    <button type="submit" class="btn btn-primary">上传</button>
-                    <a href="/admin/media" class="btn btn-secondary" style="margin-left:8px;">返回媒体库</a>
-                </div>
-            </form>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+pub async fn upload_page(State(state): State<AppState>) -> Html<String> {
+    let body = format!(
+        r#"<a href="/admin/media" class="page-back">{icon} 返回媒体库</a>
+        <div class="page-header">
+            <h1 class="page-title">上传文件</h1>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="/admin/media/upload" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label class="form-label">选择文件</label>
+                        <input type="file" name="file" required accept="image/*" class="form-input">
+                    </div>
+                    <div>
+                        <button type="submit" class="btn btn-primary">上传</button>
+                        <a href="/admin/media" class="btn btn-secondary">返回媒体库</a>
+                    </div>
+                </form>
+            </div>
+        </div>"#,
+        icon = svg_icon("arrow-left"),
     );
-    Html(html)
+
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
+    Html(admin_page("上传文件", "/admin/media", &body, &ctx))
 }
 
 pub async fn upload_media(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
         if name != "file" {
@@ -213,20 +181,20 @@ pub async fn upload_media(
         let data = match field.bytes().await {
             Ok(d) => d,
             Err(e) => {
-                return upload_error_page(&format!("读取文件失败：{e}"));
+                return upload_error_page(&format!("读取文件失败：{e}"), &ctx);
             }
         };
 
         let config = &state.config.media;
 
         if let Err(e) = upload::validate_upload(&data, &content_type, config) {
-            return upload_error_page(&e.to_string());
+            return upload_error_page(&e.to_string(), &ctx);
         }
 
         let processed = match process::process_image(&data, config) {
             Ok(p) => p,
             Err(e) => {
-                return upload_error_page(&format!("图片处理失败：{e}"));
+                return upload_error_page(&format!("图片处理失败：{e}"), &ctx);
             }
         };
 
@@ -250,7 +218,7 @@ pub async fn upload_media(
             tokio::fs::create_dir_all(parent).await.ok();
         }
         if let Err(e) = tokio::fs::write(&media_path, &processed.data).await {
-            return upload_error_page(&format!("写入文件失败：{e}"));
+            return upload_error_page(&format!("写入文件失败：{e}"), &ctx);
         }
 
         // 同时写入 public 目录以供静态访问
@@ -311,7 +279,7 @@ pub async fn upload_media(
         return Redirect::to("/admin/media").into_response();
     }
 
-    upload_error_page("未找到上传文件")
+    upload_error_page("未找到上传文件", &ctx)
 }
 
 pub async fn delete_media(
@@ -372,21 +340,21 @@ pub async fn api_media_list(State(state): State<AppState>) -> impl IntoResponse 
     Json(items)
 }
 
-fn upload_error_page(message: &str) -> axum::response::Response {
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>上传失败</title>{style}</head>
-        <body>{nav}
-        <div class="container" style="max-width:600px;">
-            <h1>上传失败</h1>
-            <div class="alert alert-error">{msg}</div>
+fn upload_error_page(message: &str, ctx: &PageContext) -> axum::response::Response {
+    let body = format!(
+        r#"<a href="/admin/media/upload" class="page-back">{icon} 返回上传</a>
+        <div class="page-header">
+            <h1 class="page-title">上传失败</h1>
+        </div>
+        <div class="alert alert-error">{msg}</div>
+        <div>
             <a href="/admin/media/upload" class="btn btn-primary">重新上传</a>
-            <a href="/admin/media" class="btn btn-secondary" style="margin-left:8px;">返回媒体库</a>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+            <a href="/admin/media" class="btn btn-secondary">返回媒体库</a>
+        </div>"#,
+        icon = svg_icon("arrow-left"),
         msg = html_escape(message),
     );
-    Html(html).into_response()
+    Html(admin_page("上传失败", "/admin/media", &body, ctx)).into_response()
 }
 
 /// 缩略图路径：在文件名前加 thumb_ 前缀

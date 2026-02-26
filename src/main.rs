@@ -98,7 +98,12 @@ fn main() -> anyhow::Result<()> {
                 &root.join("cblog.db"),
                 &site_config.plugins.enabled,
             );
-            let _stats = build::run(&root, &site_config, clean, plugin_configs)?;
+            let theme_saved_config = theme::config::load_theme_config_sync(
+                &root.join("cblog.db"),
+                &site_config.theme.active,
+            );
+            let db_posts = build::stages::load::fetch_db_posts_sync(&root.join("cblog.db"));
+            let _stats = build::run(&root, &site_config, clean, plugin_configs, theme_saved_config, db_posts)?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;

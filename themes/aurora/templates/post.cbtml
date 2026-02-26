@@ -13,7 +13,9 @@ slot content
           a.post-category [href="{{ post.category | category_url }}"] {{ post.category }}
         end
         span.word-count {{ post.word_count }} 字
-        span.reading-time {{ post.reading_time }} 分钟阅读
+        if config.show_reading_time
+          span.reading-time {{ post.reading_time }} 分钟阅读
+        end
       if post.tags
         div.post-tags
           for tag in post.tags

@@ -1,9 +1,14 @@
 use crate::config::SiteConfig;
-use crate::theme::config::{build_scss_overrides, default_values, resolve_theme};
+use crate::theme::config::{build_scss_overrides, effective_values, resolve_theme};
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::path::Path;
 
-pub fn process_assets(project_root: &Path, config: &SiteConfig) -> Result<()> {
+pub fn process_assets(
+    project_root: &Path,
+    config: &SiteConfig,
+    theme_saved_config: &HashMap<String, serde_json::Value>,
+) -> Result<()> {
     let active = &config.theme.active;
     let theme_dir = project_root.join("themes").join(active);
     let output_dir = project_root.join(&config.build.output_dir);
@@ -11,7 +16,7 @@ pub fn process_assets(project_root: &Path, config: &SiteConfig) -> Result<()> {
 
     std::fs::create_dir_all(&assets_out)?;
 
-    compile_scss(project_root, &theme_dir, &assets_out, active)?;
+    compile_scss(project_root, &theme_dir, &assets_out, active, theme_saved_config)?;
     copy_css(&theme_dir, &assets_out)?;
     copy_js(&theme_dir, &assets_out)?;
     copy_media(project_root, &output_dir)?;
@@ -24,6 +29,7 @@ fn compile_scss(
     theme_dir: &Path,
     assets_out: &Path,
     theme_name: &str,
+    theme_saved_config: &HashMap<String, serde_json::Value>,
 ) -> Result<()> {
     let scss_dir = theme_dir.join("assets").join("scss");
     let main_scss = scss_dir.join("main.scss");
@@ -35,7 +41,7 @@ fn compile_scss(
 
     // 从主题配置 schema 提取默认值，生成 SCSS 变量覆盖
     let resolved = resolve_theme(project_root, theme_name)?;
-    let values = default_values(&resolved.config_schema);
+    let values = effective_values(&resolved.config_schema, theme_saved_config);
     let overrides = build_scss_overrides(&values);
 
     let mut source = std::fs::read_to_string(&main_scss)

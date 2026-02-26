@@ -1,4 +1,4 @@
-html [lang="{{ site.language }}"]
+html [lang="{{ site.language }}"] [data-theme="{{ config.dark_mode | default('auto') }}"]
   head
     meta [charset="utf-8"]
     meta [name="viewport"] [content="width=device-width, initial-scale=1"]
@@ -7,8 +7,16 @@ html [lang="{{ site.language }}"]
     link [rel="canonical"] [href="{{ site.url }}{{ page.url }}"]
     link [rel="stylesheet"] [href="/assets/main.css"]
     link [rel="alternate"] [type="application/rss+xml"] [title="{{ site.title }} RSS"] [href="/feed.xml"]
+    if config.custom_head_html
+      raw config.custom_head_html
+    end
   body
     include partials/nav
     main.site-main
       slot content
     include partials/footer
+    if config.custom_css
+      style
+        raw config.custom_css
+    end
+    script [src="/assets/main.js"] [defer]

@@ -1,86 +1,129 @@
 @use "variables" as *;
 
-// ── Reset ──────────────────────────────────────────────
+// ── Reset ──
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+// ── CSS Custom Properties（暗黑模式基础）──
+:root {
+  --bg-color: #fafafa;
+  --text-color: #1a1a2e;
+  --text-secondary: #555;
+  --text-muted: #888;
+  --border-color: #e5e5e5;
+  --card-bg: #fff;
+  --card-border: #eee;
+  --code-bg: #f0f0f0;
+  --pre-bg: #1e1e2e;
+  --pre-color: #cdd6f4;
+  --nav-bg: #fff;
+  --footer-bg: #fff;
 }
 
-// ── 全局 ──────────────────────────────────────────────
-
-html {
-  font-size: 16px;
-  scroll-behavior: smooth;
+[data-theme="dark"] {
+  --bg-color: #1a1a2e;
+  --text-color: #e0e0e0;
+  --text-secondary: #aaa;
+  --text-muted: #888;
+  --border-color: #333;
+  --card-bg: #242442;
+  --card-border: #333;
+  --code-bg: #2a2a4a;
+  --pre-bg: #0d0d1a;
+  --pre-color: #cdd6f4;
+  --nav-bg: #16162a;
+  --footer-bg: #16162a;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-color: #1a1a2e;
+    --text-color: #e0e0e0;
+    --text-secondary: #aaa;
+    --text-muted: #888;
+    --border-color: #333;
+    --card-bg: #242442;
+    --card-border: #333;
+    --code-bg: #2a2a4a;
+    --pre-bg: #0d0d1a;
+    --pre-color: #cdd6f4;
+    --nav-bg: #16162a;
+    --footer-bg: #16162a;
+  }
+}
+
+// ── 全局 ──
+html { font-size: 16px; scroll-behavior: smooth; }
 body {
   font-family: $font-body;
   line-height: 1.7;
-  color: #1a1a2e;
-  background: #fafafa;
+  color: var(--text-color);
+  background: var(--bg-color);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
-
 a {
   color: $primary-color;
   text-decoration: none;
   transition: color 0.2s;
-
-  &:hover {
-    color: $primary-hover;
-  }
+  &:hover { color: $primary-hover; }
 }
+img { max-width: 100%; height: auto; }
 
-img {
-  max-width: 100%;
-  height: auto;
+// ── Header / Nav（对齐 nav.cbtml: nav.main-nav > div.nav-inner）──
+.main-nav {
+  border-bottom: 1px solid var(--border-color);
+  background: var(--nav-bg);
 }
-
-// ── Header / Nav ──────────────────────────────────────
-
-.site-header {
-  border-bottom: 1px solid #e5e5e5;
-  background: #fff;
-}
-
-.site-nav {
-  max-width: $max-width;
-  margin: 0 auto;
-  padding: $spacing-md $spacing-lg;
+.nav-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  .site-title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #1a1a2e;
-  }
-
-  .nav-links {
-    display: flex;
-    gap: $spacing-md;
-    list-style: none;
-
-    a {
-      color: #555;
-      font-size: 0.9rem;
-
-      &:hover {
-        color: $primary-color;
-      }
-    }
+  max-width: $max-width;
+  margin: 0 auto;
+  padding: $spacing-md $spacing-lg;
+}
+.site-logo {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-color);
+  &:hover { color: $primary-color; }
+}
+.nav-links {
+  display: flex;
+  gap: $spacing-md;
+  list-style: none;
+  align-items: center;
+  a {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    &:hover { color: $primary-color; }
   }
 }
+.nav-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: $spacing-sm;
+  color: var(--text-color);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 4px 8px;
+  color: var(--text-color);
+  font-size: 1rem;
+  line-height: 1;
+  transition: border-color 0.2s;
+  &:hover { border-color: $primary-color; }
+}
 
-// ── Main ──────────────────────────────────────────────
-
+// ── Main ──
 .site-main {
   max-width: $max-width;
   margin: 0 auto;
@@ -89,159 +132,287 @@ img {
   width: 100%;
 }
 
-// ── Article ──────────────────────────────────────────
-
+// ── Article（文章详情页）──
 article {
   margin-bottom: $spacing-xl;
-
   .post-title {
     font-size: 1.75rem;
     font-weight: 700;
     line-height: 1.3;
     margin-bottom: $spacing-sm;
   }
-
   .post-meta {
-    color: #888;
+    color: var(--text-muted);
     font-size: 0.85rem;
     margin-bottom: $spacing-lg;
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+    align-items: center;
   }
-
   .post-content {
-    h2, h3, h4 {
-      margin-top: $spacing-lg;
-      margin-bottom: $spacing-sm;
-      font-weight: 600;
-    }
-
+    h2, h3, h4 { margin-top: $spacing-lg; margin-bottom: $spacing-sm; font-weight: 600; }
     h2 { font-size: 1.4rem; }
     h3 { font-size: 1.2rem; }
-
-    p {
-      margin-bottom: $spacing-md;
-    }
-
-    ul, ol {
-      margin-bottom: $spacing-md;
-      padding-left: $spacing-lg;
-    }
-
+    p { margin-bottom: $spacing-md; }
+    ul, ol { margin-bottom: $spacing-md; padding-left: $spacing-lg; }
     blockquote {
       border-left: 3px solid $primary-color;
       padding-left: $spacing-md;
-      color: #555;
+      color: var(--text-secondary);
       margin-bottom: $spacing-md;
     }
-
     code {
       font-family: $font-code;
-      background: #f0f0f0;
+      background: var(--code-bg);
       padding: 2px 6px;
       border-radius: 3px;
       font-size: 0.9em;
     }
-
     pre {
-      background: #1e1e2e;
-      color: #cdd6f4;
+      background: var(--pre-bg);
+      color: var(--pre-color);
       padding: $spacing-md;
       border-radius: 6px;
       overflow-x: auto;
       margin-bottom: $spacing-md;
-
-      code {
-        background: none;
-        padding: 0;
-        color: inherit;
-      }
+      code { background: none; padding: 0; color: inherit; }
     }
-
-    img {
-      border-radius: 6px;
-      margin: $spacing-md 0;
-    }
+    img { border-radius: 6px; margin: $spacing-md 0; }
   }
 }
 
-// ── Post Card（列表页） ──────────────────────────────
-
-.post-list {
-  list-style: none;
+// ── Post Detail extras ──
+.post-cover {
+  margin-bottom: $spacing-lg;
+  img { width: 100%; border-radius: 8px; object-fit: cover; max-height: 400px; }
+}
+.post-header { margin-bottom: $spacing-lg; }
+.post-category {
+  display: inline-block;
+  padding: 2px 10px;
+  background: $primary-light;
+  color: $primary-color;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.word-count, .reading-time {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.post-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: $spacing-sm;
+}
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  background: var(--code-bg);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  transition: background 0.2s, color 0.2s;
+  &:hover { background: $primary-color; color: #fff; }
+}
+.toc {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  h3 { font-size: 1rem; margin-bottom: $spacing-sm; }
+  ul { padding-left: $spacing-lg; }
+  a { color: var(--text-secondary); font-size: 0.9rem; &:hover { color: $primary-color; } }
+}
+.post-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-md;
+  margin-top: $spacing-xl;
+  padding-top: $spacing-lg;
+  border-top: 1px solid var(--border-color);
+}
+.post-nav-prev, .post-nav-next {
+  display: flex;
+  flex-direction: column;
+  padding: $spacing-md;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+  &:hover { border-color: $primary-color; }
+}
+.post-nav-next { text-align: right; }
+.post-nav-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.post-nav-title {
+  font-weight: 500;
+  color: var(--text-color);
 }
 
+// ── Post Card（列表页，对齐 post-card.cbtml）──
+.post-list { list-style: none; }
 .post-card {
   padding: $spacing-lg 0;
-  border-bottom: 1px solid #eee;
-
-  .post-card-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-
-  .post-card-excerpt {
-    color: #666;
-    font-size: 0.9rem;
-    line-height: 1.6;
-  }
+  border-bottom: 1px solid var(--card-border);
+}
+.post-card-cover-link {
+  display: block;
+  margin-bottom: $spacing-md;
+}
+.post-card-cover {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.post-card-body { }
+.post-card-category {
+  display: inline-block;
+  padding: 2px 8px;
+  background: $primary-light;
+  color: $primary-color;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.post-card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.post-card-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-bottom: $spacing-sm;
+}
+.post-card-excerpt {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.post-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: $spacing-sm;
 }
 
-// ── Pagination ──────────────────────────────────────
-
+// ── Pagination（对齐 pagination.cbtml）──
 .pagination {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: $spacing-sm;
   margin-top: $spacing-xl;
-
-  a, span {
-    display: inline-block;
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-  }
-
-  a {
-    background: #fff;
-    border: 1px solid #ddd;
-
-    &:hover {
-      border-color: $primary-color;
-      color: $primary-color;
-    }
-  }
-
-  .current {
-    background: $primary-color;
-    color: #fff;
-    border: 1px solid $primary-color;
-  }
+}
+.pagination .btn {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-color);
+  text-decoration: none;
+  transition: border-color 0.2s, color 0.2s;
+  &:hover { border-color: $primary-color; color: $primary-color; }
+}
+.pagination .btn.disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+.pagination-info {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  padding: 0 $spacing-sm;
 }
 
-// ── Footer ──────────────────────────────────────────
+// ── Page ──
+.page { margin-bottom: $spacing-xl; }
+.page-content {
+  h2, h3, h4 { margin-top: $spacing-lg; margin-bottom: $spacing-sm; font-weight: 600; }
+  p { margin-bottom: $spacing-md; }
+  ul, ol { margin-bottom: $spacing-md; padding-left: $spacing-lg; }
+}
 
+// ── 404 ──
+.error-page {
+  text-align: center;
+  padding: $spacing-xl 0;
+  h1 { font-size: 4rem; color: var(--text-muted); margin-bottom: $spacing-sm; }
+  p { font-size: 1.2rem; color: var(--text-secondary); margin-bottom: $spacing-lg; }
+}
+
+// ── Archive ──
+.archive, .category-archive, .tag-archive {
+  .archive-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: $spacing-lg;
+    padding-bottom: $spacing-sm;
+    border-bottom: 2px solid $primary-color;
+  }
+}
+.archive-item {
+  display: flex;
+  align-items: baseline;
+  gap: $spacing-md;
+  padding: $spacing-sm 0;
+  border-bottom: 1px solid var(--card-border);
+}
+.archive-date {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  min-width: 100px;
+}
+.archive-post-title {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+// ── Footer（对齐 footer.cbtml）──
 .site-footer {
-  border-top: 1px solid #e5e5e5;
-  background: #fff;
+  border-top: 1px solid var(--border-color);
+  background: var(--footer-bg);
   text-align: center;
   padding: $spacing-lg;
   font-size: 0.85rem;
-  color: #999;
+  color: var(--text-muted);
+}
+.footer-inner {
+  max-width: $max-width;
+  margin: 0 auto;
+  p { margin-bottom: 4px; }
 }
 
-// ── 响应式 ──────────────────────────────────────────
-
-@media (max-width: 640px) {
-  .site-nav {
+// ── 响应式 ──
+@media (max-width: 1024px) {
+  .site-main { padding: $spacing-lg; }
+}
+@media (max-width: 768px) {
+  .nav-toggle { display: block; }
+  .nav-links {
+    display: none;
     flex-direction: column;
-    gap: $spacing-sm;
+    width: 100%;
+    padding: $spacing-sm 0;
+    &.active { display: flex; }
   }
-
-  .site-main {
-    padding: $spacing-lg $spacing-md;
-  }
-
-  article .post-title {
-    font-size: 1.4rem;
-  }
+  .nav-inner { flex-wrap: wrap; }
+  .post-nav { grid-template-columns: 1fr; }
+  .archive-item { flex-direction: column; gap: 2px; }
+}
+@media (max-width: 640px) {
+  .site-main { padding: $spacing-lg $spacing-md; }
+  article .post-title { font-size: 1.4rem; }
+  .post-card-cover { height: 160px; }
 }

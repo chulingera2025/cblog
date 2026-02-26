@@ -89,66 +89,6 @@ fn html_escape_code(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// 从 Markdown 内容提取 TOC（目录 HTML）
-pub fn extract_toc(source: &str) -> Option<String> {
-    use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-
-    let options = Options::empty();
-    let parser = Parser::new_ext(source, options);
-
-    let mut headings: Vec<(u8, String)> = Vec::new();
-    let mut in_heading = false;
-    let mut current_level: u8 = 0;
-    let mut current_text = String::new();
-
-    for event in parser {
-        match event {
-            Event::Start(Tag::Heading { level, .. }) => {
-                in_heading = true;
-                current_level = match level {
-                    HeadingLevel::H1 => 1,
-                    HeadingLevel::H2 => 2,
-                    HeadingLevel::H3 => 3,
-                    HeadingLevel::H4 => 4,
-                    HeadingLevel::H5 => 5,
-                    HeadingLevel::H6 => 6,
-                };
-                current_text.clear();
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                in_heading = false;
-                if (2..=4).contains(&current_level) {
-                    headings.push((current_level, current_text.clone()));
-                }
-            }
-            Event::Text(text) if in_heading => {
-                current_text.push_str(&text);
-            }
-            Event::Code(code) if in_heading => {
-                current_text.push_str(&code);
-            }
-            _ => {}
-        }
-    }
-
-    if headings.is_empty() {
-        return None;
-    }
-
-    let mut toc = String::from("<ul class=\"toc-list\">\n");
-    for (level, text) in &headings {
-        let id = slugify_heading(text);
-        let indent = "  ".repeat((*level as usize).saturating_sub(2));
-        toc.push_str(&format!(
-            "{}<li><a href=\"#{}\">{}</a></li>\n",
-            indent, id, text
-        ));
-    }
-    toc.push_str("</ul>");
-
-    Some(toc)
-}
-
 fn slugify_heading(text: &str) -> String {
     text.to_lowercase()
         .chars()
@@ -194,4 +134,60 @@ pub fn count_words(text: &str) -> u32 {
 /// 计算预估阅读时间（分钟）
 pub fn reading_time(word_count: u32) -> u32 {
     (word_count / 200).max(1)
+}
+
+/// 从 HTML 内容统计字数（去除标签后按中文/英文规则计算）
+pub fn count_words_html(html: &str) -> u32 {
+    let text = strip_html_tags(html);
+    count_words(&text)
+}
+
+/// 从 HTML 的 h2-h4 标签提取目录
+pub fn extract_toc_from_html(html: &str) -> Option<String> {
+    use regex::Regex;
+
+    let re = Regex::new(r"<h([2-4])[^>]*>(.*?)</h[2-4]>").ok()?;
+
+    let mut headings: Vec<(u8, String)> = Vec::new();
+    for cap in re.captures_iter(html) {
+        let level: u8 = cap[1].parse().unwrap_or(2);
+        let inner_html = &cap[2];
+        let text = strip_html_tags(inner_html);
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            headings.push((level, text));
+        }
+    }
+
+    if headings.is_empty() {
+        return None;
+    }
+
+    let mut toc = String::from("<ul class=\"toc-list\">\n");
+    for (level, text) in &headings {
+        let id = slugify_heading(text);
+        let indent = "  ".repeat((*level as usize).saturating_sub(2));
+        toc.push_str(&format!(
+            "{}<li><a href=\"#{}\">{}</a></li>\n",
+            indent, id, text
+        ));
+    }
+    toc.push_str("</ul>");
+
+    Some(toc)
+}
+
+/// 去除 HTML 标签，保留纯文本
+fn strip_html_tags(html: &str) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => result.push(ch),
+            _ => {}
+        }
+    }
+    result
 }

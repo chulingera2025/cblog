@@ -320,7 +320,7 @@ pub async fn change_password(
         .execute(&state.db)
         .await
     {
-        Ok(_) => Redirect::to("/admin").into_response(),
+        Ok(_) => Redirect::to("/admin/profile?toast_msg=密码已更新&toast_type=success").into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "更新密码失败").into_response(),
     }
 }
@@ -356,28 +356,38 @@ const LOGIN_HTML: &str = r#"<!DOCTYPE html>
 <title>登录 - cblog</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:system-ui,-apple-system,sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.card{background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);padding:2rem;width:100%;max-width:380px}
-h1{font-size:1.4rem;text-align:center;margin-bottom:1.5rem;color:#333}
-label{display:block;font-size:.9rem;color:#555;margin-bottom:.3rem}
-input[type=text],input[type=password]{width:100%;padding:.6rem .8rem;border:1px solid #d9d9d9;border-radius:4px;font-size:1rem;margin-bottom:1rem;outline:none;transition:border .2s}
-input:focus{border-color:#1890ff}
-button{width:100%;padding:.7rem;background:#1890ff;color:#fff;border:none;border-radius:4px;font-size:1rem;cursor:pointer;transition:background .2s}
-button:hover{background:#40a9ff}
-.error{color:#ff4d4f;font-size:.85rem;text-align:center;margin-bottom:1rem}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#F6F9FC;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.login-container{width:100%;max-width:400px;padding:0 1rem}
+.login-card{background:#fff;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.07),0 4px 12px rgba(0,0,0,.05);padding:2.5rem 2rem}
+.login-brand{font-size:1.6rem;font-weight:700;color:#0A2540;text-align:center;margin-bottom:.25rem}
+.login-subtitle{font-size:.95rem;color:#697386;text-align:center;margin-bottom:1.75rem}
+.error-msg{background:#FFF0F2;color:#DF1B41;font-size:.85rem;text-align:center;padding:.6rem .8rem;border-radius:6px;margin-bottom:1.25rem}
+.form-group{margin-bottom:1.25rem}
+.form-group label{display:block;font-size:.875rem;font-weight:500;color:#3C4257;margin-bottom:.4rem}
+.form-group input{width:100%;padding:.65rem .75rem;border:1px solid #E0E6EB;border-radius:6px;font-size:.95rem;color:#1A1F36;outline:none;transition:border .15s,box-shadow .15s}
+.form-group input:focus{border-color:#635BFF;box-shadow:0 0 0 3px rgba(99,91,255,.12)}
+button[type=submit]{width:100%;padding:.7rem;background:#635BFF;color:#fff;border:none;border-radius:6px;font-size:.95rem;font-weight:600;cursor:pointer;transition:background .15s;margin-top:.25rem}
+button[type=submit]:hover{background:#5851db}
 </style>
 </head>
 <body>
-<div class="card">
-<h1>cblog 管理后台</h1>
-<script>if(location.search.includes('error=1'))document.write('<p class="error">用户名或密码错误</p>')</script>
-<form method="post" action="/admin/login">
-<label for="username">用户名</label>
-<input type="text" id="username" name="username" required autofocus>
-<label for="password">密码</label>
-<input type="password" id="password" name="password" required>
-<button type="submit">登录</button>
-</form>
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-brand">cblog</div>
+        <p class="login-subtitle">登录管理后台</p>
+        <script>if(location.search.includes('error=1'))document.write('<div class="error-msg">用户名或密码错误</div>')</script>
+        <form method="post" action="/admin/login">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">登录</button>
+        </form>
+    </div>
 </div>
 </body>
 </html>"#;

@@ -1,49 +1,15 @@
 use axum::extract::State;
 use axum::response::Html;
 
+use crate::admin::layout::{admin_page, html_escape};
 use crate::state::AppState;
 
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1000px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        table { width:100%; border-collapse:collapse; background:#fff; border-radius:4px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #eee; }
-        th { background:#f8f8f8; font-weight:600; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-success { background:#27ae60; color:#fff; }
-        .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
-        .stat-card { background:#fff; padding:20px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); text-align:center; }
-        .stat-card .number { font-size:32px; font-weight:bold; color:#4a6cf7; }
-        .stat-card .label { font-size:14px; color:#666; margin-top:4px; }
-        .status-badge { padding:2px 8px; border-radius:10px; font-size:12px; }
-        .status-success { background:#a8e6cf; color:#1b5e20; }
-        .status-failed { background:#ffcdd2; color:#b71c1c; }
-        .status-running { background:#ffeaa7; color:#6c5b00; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+const EXTRA_STYLE: &str = r#"
+    .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+    .stat-card { background:#fff; padding:20px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); text-align:center; }
+    .stat-card .number { font-size:32px; font-weight:bold; color:#4a6cf7; }
+    .stat-card .label { font-size:14px; color:#666; margin-top:4px; }
+"#;
 
 pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     #[derive(sqlx::FromRow)]
@@ -179,10 +145,8 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
         }
     };
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>仪表盘</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <h1>仪表盘</h1>
             <div class="stat-grid">
                 <div class="stat-card">
@@ -210,9 +174,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
                     <tbody>{post_rows}</tbody>
                 </table>
             </div>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         total_posts = total_posts,
         published_posts = published_posts,
         total_pages = total_pages,
@@ -221,5 +183,5 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
         post_rows = post_rows,
     );
 
-    Html(html)
+    Html(admin_page("仪表盘", EXTRA_STYLE, &body))
 }

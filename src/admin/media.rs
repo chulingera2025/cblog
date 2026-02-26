@@ -3,6 +3,7 @@ use axum::response::{Html, IntoResponse, Json, Redirect};
 use serde::{Deserialize, Serialize};
 use std::path;
 
+use crate::admin::layout::{admin_page, html_escape};
 use crate::media::{process, upload};
 use crate::state::AppState;
 
@@ -25,51 +26,22 @@ struct MediaItem {
     uploaded_at: String,
 }
 
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1200px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-danger { background:#e74c3c; color:#fff; }
-        .btn-secondary { background:#6c757d; color:#fff; }
-        label { display:block; margin-bottom:4px; font-weight:500; }
-        input[type=file] { margin-bottom:12px; }
-        .media-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
-        .media-card { background:#fff; border-radius:6px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        .media-card img { width:100%; height:160px; object-fit:cover; display:block; background:#eee; }
-        .media-card .file-icon { width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:#e8e8e8; font-size:48px; color:#999; }
-        .media-card .info { padding:10px; }
-        .media-card .info .filename { font-size:13px; font-weight:500; word-break:break-all; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .media-card .info .meta { font-size:11px; color:#888; margin-bottom:6px; }
-        .media-card .info .actions { display:flex; gap:6px; align-items:center; }
-        .media-card .info .actions a,
-        .media-card .info .actions button { font-size:12px; padding:2px 8px; }
-        .alert { padding:10px 16px; border-radius:4px; margin-bottom:16px; }
-        .alert-error { background:#fce4e4; color:#c0392b; border:1px solid #e74c3c; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+const EXTRA_STYLE: &str = r#"
+    .container { max-width:1200px; }
+    input[type=file] { margin-bottom:12px; }
+    .media-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:16px; }
+    .media-card { background:#fff; border-radius:6px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+    .media-card img { width:100%; height:160px; object-fit:cover; display:block; background:#eee; }
+    .media-card .file-icon { width:100%; height:160px; display:flex; align-items:center; justify-content:center; background:#e8e8e8; font-size:48px; color:#999; }
+    .media-card .info { padding:10px; }
+    .media-card .info .filename { font-size:13px; font-weight:500; word-break:break-all; margin-bottom:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .media-card .info .meta { font-size:11px; color:#888; margin-bottom:6px; }
+    .media-card .info .actions { display:flex; gap:6px; align-items:center; }
+    .media-card .info .actions a,
+    .media-card .info .actions button { font-size:12px; padding:2px 8px; }
+    .alert { padding:10px 16px; border-radius:4px; margin-bottom:16px; }
+    .alert-error { background:#fce4e4; color:#c0392b; border:1px solid #e74c3c; }
+"#;
 
 pub async fn list_media(
     State(state): State<AppState>,
@@ -149,10 +121,8 @@ pub async fn list_media(
         p
     };
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>媒体库</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h1>媒体库</h1>
                 <a href="/admin/media/upload" class="btn btn-primary">上传文件</a>
@@ -161,21 +131,16 @@ pub async fn list_media(
             <div style="margin-top:16px;display:flex;gap:8px;">
                 {pagination}
             </div>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         cards = cards,
         pagination = pagination,
     );
 
-    Html(html)
+    Html(admin_page("媒体库", EXTRA_STYLE, &body))
 }
 
 pub async fn upload_page() -> Html<String> {
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>上传文件</title>{style}</head>
-        <body>{nav}
-        <div class="container" style="max-width:600px;">
+    let body = r#"<div class="container" style="max-width:600px;">
             <h1>上传文件</h1>
             <form method="POST" action="/admin/media/upload" enctype="multipart/form-data">
                 <div style="margin-bottom:12px;">
@@ -187,11 +152,8 @@ pub async fn upload_page() -> Html<String> {
                     <a href="/admin/media" class="btn btn-secondary" style="margin-left:8px;">返回媒体库</a>
                 </div>
             </form>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
-    );
-    Html(html)
+        </div>"#;
+    Html(admin_page("上传文件", EXTRA_STYLE, body))
 }
 
 pub async fn upload_media(
@@ -373,20 +335,16 @@ pub async fn api_media_list(State(state): State<AppState>) -> impl IntoResponse 
 }
 
 fn upload_error_page(message: &str) -> axum::response::Response {
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>上传失败</title>{style}</head>
-        <body>{nav}
-        <div class="container" style="max-width:600px;">
+    let body = format!(
+        r#"<div class="container" style="max-width:600px;">
             <h1>上传失败</h1>
             <div class="alert alert-error">{msg}</div>
             <a href="/admin/media/upload" class="btn btn-primary">重新上传</a>
             <a href="/admin/media" class="btn btn-secondary" style="margin-left:8px;">返回媒体库</a>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         msg = html_escape(message),
     );
-    Html(html).into_response()
+    Html(admin_page("上传失败", EXTRA_STYLE, &body)).into_response()
 }
 
 /// 缩略图路径：在文件名前加 thumb_ 前缀

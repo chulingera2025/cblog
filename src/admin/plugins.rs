@@ -2,65 +2,25 @@ use axum::extract::{Form, Path, State};
 use axum::response::{Html, Redirect};
 use std::collections::HashMap;
 
+use crate::admin::layout::{admin_page, html_escape};
 use crate::plugin::registry::{list_available_plugins, load_plugin_info};
 use crate::plugin::store::PluginStore;
 use crate::state::AppState;
 
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-        <a href="/admin/theme" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">主题</a>
-        <a href="/admin/plugins" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">插件</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1000px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        h2 { margin-top:24px; margin-bottom:12px; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-danger { background:#e74c3c; color:#fff; }
-        .btn-secondary { background:#6c757d; color:#fff; }
-        .plugin-card { background:#fff; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
-        .plugin-card.enabled { border-color:#4a6cf7; border-width:2px; }
-        .plugin-name { font-weight:600; font-size:16px; }
-        .plugin-version { color:#888; font-size:13px; margin-left:8px; }
-        .plugin-desc { color:#666; font-size:13px; margin-top:4px; }
-        .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; }
-        .badge-enabled { background:#e8f5e9; color:#2e7d32; }
-        .badge-disabled { background:#fafafa; color:#999; }
-        .actions { display:flex; gap:8px; align-items:center; }
-        label { display:block; margin-bottom:4px; font-weight:500; }
-        input[type=text], textarea {
-            width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:14px; margin-bottom:12px;
-        }
-        textarea { min-height:80px; }
-        .form-row { margin-bottom:8px; }
-        .detail-section { background:#fff; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:16px; }
-        .cap-list { display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
-        .cap-tag { background:#eef; padding:2px 10px; border-radius:12px; font-size:13px; color:#4a6cf7; }
-        table { width:100%; border-collapse:collapse; background:#fff; border-radius:4px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #eee; }
-        th { background:#f8f8f8; font-weight:600; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+const EXTRA_STYLE: &str = r#"
+    .plugin-card { background:#fff; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+    .plugin-card.enabled { border-color:#4a6cf7; border-width:2px; }
+    .plugin-name { font-weight:600; font-size:16px; }
+    .plugin-version { color:#888; font-size:13px; margin-left:8px; }
+    .plugin-desc { color:#666; font-size:13px; margin-top:4px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; }
+    .badge-enabled { background:#e8f5e9; color:#2e7d32; }
+    .badge-disabled { background:#fafafa; color:#999; }
+    .detail-section { background:#fff; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:16px; }
+    .cap-list { display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+    .cap-tag { background:#eef; padding:2px 10px; border-radius:12px; font-size:13px; color:#4a6cf7; }
+    textarea { min-height:80px; }
+"#;
 
 /// GET /admin/plugins — 插件列表页面
 pub async fn list_plugins(State(state): State<AppState>) -> Html<String> {
@@ -159,21 +119,16 @@ pub async fn list_plugins(State(state): State<AppState>) -> Html<String> {
             .to_string();
     }
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>插件管理 - cblog</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <h1>插件管理</h1>
             <p style="margin-bottom:20px;color:#666;">管理已安装的插件，启用或禁用插件功能。</p>
             {cards_html}
-        </div>
-        </body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         cards_html = cards_html,
     );
 
-    Html(html)
+    Html(admin_page("插件管理 - cblog", EXTRA_STYLE, &body))
 }
 
 /// POST /admin/plugins/toggle — 切换插件启用状态
@@ -267,15 +222,13 @@ pub async fn plugin_detail(
     let info = match load_plugin_info(&toml_path) {
         Ok(info) => info,
         Err(e) => {
-            return Html(format!(
-                r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>插件详情</title>{style}</head>
-                <body>{nav}<div class="container"><h1>插件详情</h1>
+            let body = format!(
+                r#"<div class="container"><h1>插件详情</h1>
                 <p style="color:#e74c3c;">加载插件信息失败：{err}</p>
-                <a href="/admin/plugins">返回插件列表</a></div></body></html>"#,
-                style = page_style(),
-                nav = admin_nav(),
+                <a href="/admin/plugins">返回插件列表</a></div>"#,
                 err = html_escape(&e.to_string()),
-            ));
+            );
+            return Html(admin_page("插件详情", EXTRA_STYLE, &body));
         }
     };
 
@@ -375,10 +328,8 @@ pub async fn plugin_detail(
         )
     };
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title} - 插件详情</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <p style="margin-bottom:12px;"><a href="/admin/plugins">&larr; 返回插件列表</a></p>
             <h1><span class="plugin-name">{name}</span>{version_html} {status_badge}</h1>
             <p style="color:#666;margin-bottom:20px;">{desc}</p>
@@ -397,11 +348,7 @@ pub async fn plugin_detail(
                 <h2>插件配置</h2>
                 {config_html}
             </div>
-        </div>
-        </body></html>"#,
-        title = html_escape(&name),
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         name = html_escape(&name),
         version_html = version_html,
         status_badge = status_badge,
@@ -411,7 +358,11 @@ pub async fn plugin_detail(
         config_html = config_html,
     );
 
-    Html(html)
+    Html(admin_page(
+        &format!("{} - 插件详情", html_escape(&name)),
+        EXTRA_STYLE,
+        &body,
+    ))
 }
 
 /// POST /admin/plugins/{name}/config — 保存插件配置

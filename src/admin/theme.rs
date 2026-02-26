@@ -4,6 +4,7 @@ use serde::Deserialize;
 use sqlx::Row;
 use std::collections::HashMap;
 
+use crate::admin::layout::{admin_page, admin_page_with_script, html_escape};
 use crate::state::AppState;
 use crate::theme::config::{self, ConfigField};
 
@@ -12,54 +13,15 @@ pub struct SwitchForm {
     pub theme_name: String,
 }
 
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-        <a href="/admin/theme" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">主题</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1000px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        table { width:100%; border-collapse:collapse; background:#fff; border-radius:4px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #eee; }
-        th { background:#f8f8f8; font-weight:600; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-danger { background:#e74c3c; color:#fff; }
-        .btn-secondary { background:#6c757d; color:#fff; }
-        label { display:block; margin-bottom:4px; font-weight:500; }
-        input[type=text], input[type=number], input[type=color], textarea, select {
-            width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:14px; margin-bottom:12px;
-        }
-        textarea { min-height:120px; }
-        .form-row { margin-bottom:8px; }
-        fieldset { border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:20px; background:#fff; }
-        legend { font-weight:600; padding:0 8px; color:#4a6cf7; }
-        .theme-card { background:#fff; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
-        .theme-card.active { border-color:#4a6cf7; border-width:2px; }
-        .theme-name { font-weight:600; font-size:16px; }
-        .theme-version { color:#888; font-size:13px; margin-left:8px; }
-        .field-desc { font-size:12px; color:#888; margin-bottom:8px; margin-top:-8px; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+const EXTRA_STYLE: &str = r#"
+    fieldset { border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:20px; background:#fff; }
+    legend { font-weight:600; padding:0 8px; color:#4a6cf7; }
+    .theme-card { background:#fff; border:1px solid #ddd; border-radius:6px; padding:16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+    .theme-card.active { border-color:#4a6cf7; border-width:2px; }
+    .theme-name { font-weight:600; font-size:16px; }
+    .theme-version { color:#888; font-size:13px; margin-left:8px; }
+    .field-desc { font-size:12px; color:#888; margin-bottom:8px; margin-top:-8px; }
+"#;
 
 fn json_value_to_string(val: &serde_json::Value) -> String {
     match val {
@@ -161,14 +123,12 @@ pub async fn theme_settings(State(state): State<AppState>) -> Html<String> {
     let resolved = match config::resolve_theme(&state.project_root, active_theme) {
         Ok(r) => r,
         Err(e) => {
-            return Html(format!(
-                r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>主题设置</title>{style}</head>
-                <body>{nav}<div class="container"><h1>主题设置</h1>
-                <p style="color:#e74c3c;">加载主题配置失败：{err}</p></div></body></html>"#,
-                style = page_style(),
-                nav = admin_nav(),
+            let body = format!(
+                r#"<div class="container"><h1>主题设置</h1>
+                <p style="color:#e74c3c;">加载主题配置失败：{err}</p></div>"#,
                 err = html_escape(&e.to_string()),
-            ));
+            );
+            return Html(admin_page("主题设置", EXTRA_STYLE, &body));
         }
     };
 
@@ -278,26 +238,8 @@ pub async fn theme_settings(State(state): State<AppState>) -> Html<String> {
         ));
     }
 
-    // depends_on 的 JS 实现
-    let depends_js = r#"<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('[data-depends-on]').forEach(function(el) {
-            var depKey = el.getAttribute('data-depends-on');
-            var checkbox = document.querySelector('input[name="' + depKey + '"][type="checkbox"]');
-            if (!checkbox) return;
-            function toggle() {
-                el.style.display = checkbox.checked ? '' : 'none';
-            }
-            toggle();
-            checkbox.addEventListener('change', toggle);
-        });
-    });
-    </script>"#;
-
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>主题设置</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <h1>主题设置</h1>
             <p style="margin-bottom:20px;color:#666;">当前主题：<strong>{theme_name}</strong>
             {version_badge}</p>
@@ -312,11 +254,7 @@ pub async fn theme_settings(State(state): State<AppState>) -> Html<String> {
 
             <h2 style="margin-top:32px;margin-bottom:12px;">已安装主题</h2>
             {theme_list_html}
-        </div>
-        {depends_js}
-        </body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         theme_name = html_escape(active_theme),
         version_badge = if resolved.meta.version.is_empty() {
             String::new()
@@ -328,10 +266,24 @@ pub async fn theme_settings(State(state): State<AppState>) -> Html<String> {
         },
         form_html = form_html,
         theme_list_html = theme_list_html,
-        depends_js = depends_js,
     );
 
-    Html(html)
+    let depends_script = r#"
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('[data-depends-on]').forEach(function(el) {
+            var depKey = el.getAttribute('data-depends-on');
+            var checkbox = document.querySelector('input[name="' + depKey + '"][type="checkbox"]');
+            if (!checkbox) return;
+            function toggle() {
+                el.style.display = checkbox.checked ? '' : 'none';
+            }
+            toggle();
+            checkbox.addEventListener('change', toggle);
+        });
+    });
+    "#;
+
+    Html(admin_page_with_script("主题设置", EXTRA_STYLE, &body, depends_script))
 }
 
 pub async fn save_theme_settings(

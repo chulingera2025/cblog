@@ -3,6 +3,7 @@ use axum::response::{Html, Redirect};
 use serde::Deserialize;
 use sqlx::Row;
 
+use crate::admin::layout::{admin_page, html_escape};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -36,51 +37,10 @@ fn generate_slug(title: &str) -> String {
         .join("-")
 }
 
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1000px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        table { width:100%; border-collapse:collapse; background:#fff; border-radius:4px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #eee; }
-        th { background:#f8f8f8; font-weight:600; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-danger { background:#e74c3c; color:#fff; }
-        .btn-secondary { background:#6c757d; color:#fff; }
-        .btn-success { background:#27ae60; color:#fff; }
-        label { display:block; margin-bottom:4px; font-weight:500; }
-        input[type=text], textarea, select { width:100%; padding:8px 10px; border:1px solid #ccc; border-radius:4px; font-size:14px; margin-bottom:12px; }
-        textarea { min-height:300px; font-family:monospace; }
-        .form-row { margin-bottom:8px; }
-        .status-badge { padding:2px 8px; border-radius:10px; font-size:12px; }
-        .status-draft { background:#ffeaa7; color:#6c5b00; }
-        .status-published { background:#a8e6cf; color:#1b5e20; }
-        .status-archived { background:#ddd; color:#555; }
-        .actions form { display:inline; }
-        .filter-bar { margin-bottom:16px; display:flex; gap:12px; align-items:center; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+const EXTRA_STYLE: &str = r#"
+    .filter-bar { margin-bottom:16px; display:flex; gap:12px; align-items:center; }
+    textarea { min-height:300px; font-family:monospace; }
+"#;
 
 pub async fn list_posts(
     State(state): State<AppState>,
@@ -187,10 +147,8 @@ pub async fn list_posts(
         ));
     }
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>文章管理</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h1>文章管理</h1>
                 <a href="/admin/posts/new" class="btn btn-primary">新建文章</a>
@@ -213,9 +171,7 @@ pub async fn list_posts(
             <div style="margin-top:16px;display:flex;gap:8px;">
                 {pagination}
             </div>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         table_rows = table_rows,
         sel_draft = if params.status.as_deref() == Some("draft") { "selected" } else { "" },
         sel_pub = if params.status.as_deref() == Some("published") { "selected" } else { "" },
@@ -238,14 +194,11 @@ pub async fn list_posts(
         },
     );
 
-    Html(html)
+    Html(admin_page("文章管理", EXTRA_STYLE, &body))
 }
 
 pub async fn new_post_page() -> Html<String> {
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>新建文章</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = r#"<div class="container">
             <h1>新建文章</h1>
             <form method="POST" action="/admin/posts">
                 <div class="form-row">
@@ -290,11 +243,8 @@ pub async fn new_post_page() -> Html<String> {
                     <a href="/admin/posts" class="btn btn-secondary" style="margin-left:8px;">取消</a>
                 </div>
             </form>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
-    );
-    Html(html)
+        </div>"#;
+    Html(admin_page("新建文章", EXTRA_STYLE, body))
 }
 
 pub async fn create_post(
@@ -364,10 +314,8 @@ pub async fn edit_post_page(
     let cover_image = meta["cover_image"].as_str().unwrap_or("");
     let excerpt = meta["excerpt"].as_str().unwrap_or("");
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>编辑文章</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h1>编辑文章</h1>
                 <div style="display:flex;gap:8px;">
@@ -420,9 +368,7 @@ pub async fn edit_post_page(
                     <a href="/admin/posts" class="btn btn-secondary" style="margin-left:8px;">返回列表</a>
                 </div>
             </form>
-        </div></body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
+        </div>"#,
         id = html_escape(post_id),
         title = html_escape(post_title),
         slug = html_escape(post_slug),
@@ -446,7 +392,7 @@ pub async fn edit_post_page(
         },
     );
 
-    Html(html)
+    Html(admin_page("编辑文章", EXTRA_STYLE, &body))
 }
 
 pub async fn update_post(

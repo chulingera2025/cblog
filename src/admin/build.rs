@@ -4,47 +4,13 @@ use axum::response::{Html, Redirect};
 use sqlx::Row;
 use std::sync::Arc;
 
+use crate::admin::layout::{admin_page_with_script, html_escape};
 use crate::build::events::BuildEvent;
 use crate::state::AppState;
 
-fn admin_nav() -> String {
-    r#"<nav style="background:#1a1a2e;padding:12px 24px;display:flex;gap:24px;align-items:center;">
-        <a href="/admin" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">仪表盘</a>
-        <a href="/admin/posts" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">文章</a>
-        <a href="/admin/pages" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">页面</a>
-        <a href="/admin/media" style="color:#e0e0e0;text-decoration:none;font-weight:bold;">媒体</a>
-    </nav>"#
-        .to_string()
-}
-
-fn page_style() -> &'static str {
-    r#"<style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:system-ui,-apple-system,sans-serif; background:#f5f5f5; color:#333; }
-        .container { max-width:1000px; margin:24px auto; padding:0 16px; }
-        h1 { margin-bottom:16px; }
-        table { width:100%; border-collapse:collapse; background:#fff; border-radius:4px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
-        th,td { padding:10px 14px; text-align:left; border-bottom:1px solid #eee; }
-        th { background:#f8f8f8; font-weight:600; }
-        a { color:#4a6cf7; text-decoration:none; }
-        a:hover { text-decoration:underline; }
-        .btn { display:inline-block; padding:6px 14px; border-radius:4px; border:none; cursor:pointer; font-size:14px; text-decoration:none; }
-        .btn-primary { background:#4a6cf7; color:#fff; }
-        .btn-success { background:#27ae60; color:#fff; }
-        .status-badge { padding:2px 8px; border-radius:10px; font-size:12px; }
-        .status-success { background:#a8e6cf; color:#1b5e20; }
-        .status-failed { background:#ffcdd2; color:#b71c1c; }
-        .status-running { background:#ffeaa7; color:#6c5b00; }
-        .error-text { color:#c62828; font-size:12px; }
-    </style>"#
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
+const EXTRA_STYLE: &str = r#"
+    .error-text { color:#c62828; font-size:12px; }
+"#;
 
 pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     #[derive(sqlx::FromRow)]
@@ -100,10 +66,8 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
         ));
     }
 
-    let html = format!(
-        r#"<!DOCTYPE html><html><head><meta charset="utf-8"><title>构建历史</title>{style}</head>
-        <body>{nav}
-        <div class="container">
+    let body = format!(
+        r#"<div class="container">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h1>构建历史</h1>
                 <div style="display:flex;gap:12px;align-items:center;">
@@ -117,37 +81,35 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
                 <thead><tr><th>开始时间</th><th>触发方式</th><th>状态</th><th>耗时</th><th>完成时间</th><th>错误</th></tr></thead>
                 <tbody>{table_rows}</tbody>
             </table>
-        </div>
-        <script>
-        (function() {{
+        </div>"#,
+        table_rows = table_rows,
+    );
+
+    let script = r#"
+        (function() {
             var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             var ws = new WebSocket(protocol + '//' + location.host + '/admin/build/ws');
             var el = document.getElementById('build-status');
-            ws.onmessage = function(e) {{
+            ws.onmessage = function(e) {
                 var event = JSON.parse(e.data);
-                if (event.type === 'Started') {{
+                if (event.type === 'Started') {
                     el.innerHTML = '<span class="status-badge status-running">构建中...</span>';
-                }} else if (event.type === 'Finished') {{
+                } else if (event.type === 'Finished') {
                     el.innerHTML = '<span class="status-badge status-success">完成: '
                         + event.total_pages + '页, '
                         + event.rebuilt + '重建, '
                         + event.cached + '缓存, '
                         + event.total_ms + 'ms</span>';
-                    setTimeout(function() {{ location.reload(); }}, 1500);
-                }} else if (event.type === 'Failed') {{
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else if (event.type === 'Failed') {
                     el.innerHTML = '<span class="status-badge status-failed">失败: ' + event.error + '</span>';
-                    setTimeout(function() {{ location.reload(); }}, 1500);
-                }}
-            }};
-        }})();
-        </script>
-        </body></html>"#,
-        style = page_style(),
-        nav = admin_nav(),
-        table_rows = table_rows,
-    );
+                    setTimeout(function() { location.reload(); }, 1500);
+                }
+            };
+        })();
+    "#;
 
-    Html(html)
+    Html(admin_page_with_script("构建历史", EXTRA_STYLE, &body, script))
 }
 
 pub async fn trigger_build(State(state): State<AppState>) -> Redirect {

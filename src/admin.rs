@@ -64,6 +64,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/media/upload", get(media::upload_page).post(media::upload_media))
         .route("/admin/media/{id}/delete", post(media::delete_media))
         .route("/admin/api/media", get(media::api_media_list))
+        .route("/admin/api/media/upload", post(media::api_upload_media))
         // 分类管理
         .route("/admin/categories", get(categories::list_categories).post(categories::create_category))
         .route("/admin/categories/new", get(categories::new_category_page))

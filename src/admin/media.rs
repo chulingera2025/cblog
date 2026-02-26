@@ -326,6 +326,147 @@ pub async fn delete_media(
     Redirect::to("/admin/media")
 }
 
+/// JSON 格式的媒体上传接口，供编辑器拖拽/粘贴/选择上传使用
+pub async fn api_upload_media(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        if name != "file" {
+            continue;
+        }
+
+        let file_name = field.file_name().unwrap_or("upload").to_string();
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        let data = match field.bytes().await {
+            Ok(d) => d,
+            Err(e) => {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": format!("读取文件失败：{e}") })),
+                )
+                    .into_response();
+            }
+        };
+
+        let config = &state.config.media;
+
+        if let Err(e) = upload::validate_upload(&data, &content_type, config) {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response();
+        }
+
+        let processed = match process::process_image(&data, config) {
+            Ok(p) => p,
+            Err(e) => {
+                return (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": format!("图片处理失败：{e}") })),
+                )
+                    .into_response();
+            }
+        };
+
+        let final_name = if processed.mime_type == "image/webp" && !file_name.ends_with(".webp") {
+            let stem = path::Path::new(&file_name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("upload");
+            format!("{stem}.webp")
+        } else {
+            file_name.clone()
+        };
+
+        let (relative_path, url) = upload::generate_storage_path(&final_name);
+        let upload_dir = &config.upload_dir;
+
+        let media_path = state.project_root.join(upload_dir).join(&relative_path);
+        if let Some(parent) = media_path.parent() {
+            tokio::fs::create_dir_all(parent).await.ok();
+        }
+        if let Err(e) = tokio::fs::write(&media_path, &processed.data).await {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": format!("写入文件失败：{e}") })),
+            )
+                .into_response();
+        }
+
+        let public_path = state.project_root.join("public/media").join(&relative_path);
+        if let Some(parent) = public_path.parent() {
+            tokio::fs::create_dir_all(parent).await.ok();
+        }
+        tokio::fs::write(&public_path, &processed.data).await.ok();
+
+        let thumb_url = if let Some(ref thumb_data) = processed.thumbnail {
+            let thumb_relative = thumb_relative_path(&relative_path);
+
+            let thumb_media = state.project_root.join(upload_dir).join(&thumb_relative);
+            if let Some(parent) = thumb_media.parent() {
+                tokio::fs::create_dir_all(parent).await.ok();
+            }
+            tokio::fs::write(&thumb_media, thumb_data).await.ok();
+
+            let thumb_public = state.project_root.join("public/media").join(&thumb_relative);
+            if let Some(parent) = thumb_public.parent() {
+                tokio::fs::create_dir_all(parent).await.ok();
+            }
+            tokio::fs::write(&thumb_public, thumb_data).await.ok();
+
+            Some(format!("/media/{thumb_relative}"))
+        } else {
+            None
+        };
+
+        let id = ulid::Ulid::new().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let filename = path::Path::new(&relative_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        let _ = sqlx::query(
+            "INSERT INTO media (id, filename, original_name, mime_type, size_bytes, width, height, url, thumb_url, uploaded_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(&filename)
+        .bind(&file_name)
+        .bind(&processed.mime_type)
+        .bind(processed.data.len() as i64)
+        .bind(processed.width as i64)
+        .bind(processed.height as i64)
+        .bind(&url)
+        .bind(&thumb_url)
+        .bind(&now)
+        .execute(&state.db)
+        .await
+        .ok();
+
+        return Json(serde_json::json!({
+            "url": url,
+            "filename": filename,
+            "id": id
+        }))
+        .into_response();
+    }
+
+    (
+        axum::http::StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "未找到上传文件" })),
+    )
+        .into_response()
+}
+
 /// JSON 格式的媒体列表，供编辑器插入图片使用
 pub async fn api_media_list(State(state): State<AppState>) -> impl IntoResponse {
     let items: Vec<MediaItem> = sqlx::query_as::<_, MediaItem>(

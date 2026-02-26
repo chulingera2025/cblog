@@ -230,6 +230,13 @@ pub async fn create_page(
     .execute(&state.db)
     .await;
 
+    if status == "published" {
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            crate::admin::build::spawn_build(&state_clone, "auto:create_page").await;
+        });
+    }
+
     Redirect::to(&format!("/admin/pages/{id}"))
 }
 
@@ -345,6 +352,11 @@ pub async fn update_page(
     .execute(&state.db)
     .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:update_page").await;
+    });
+
     Redirect::to(&format!("/admin/pages/{id}"))
 }
 
@@ -356,6 +368,11 @@ pub async fn delete_page(
         .bind(&id)
         .execute(&state.db)
         .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:delete_page").await;
+    });
 
     Redirect::to("/admin/pages")
 }

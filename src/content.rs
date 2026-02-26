@@ -1,5 +1,4 @@
 pub mod excerpt;
-pub mod frontmatter;
 pub mod markdown;
 
 use chrono::{DateTime, Utc};

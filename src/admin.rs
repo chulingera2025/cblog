@@ -23,6 +23,14 @@ pub mod settings;
 pub mod theme;
 
 pub fn router(state: AppState) -> Router {
+    // 安装路由（不受认证和安装检测中间件限制）
+    let install_routes = Router::new()
+        .route("/install", get(install::install_page).post(install::install_submit))
+        .route(
+            "/install/register",
+            get(install::register_page).post(install::register_submit),
+        );
+
     // 无需认证的路由
     let public_routes = Router::new()
         .route("/admin/login", get(auth::login_page).post(auth::login_submit))
@@ -65,6 +73,8 @@ pub fn router(state: AppState) -> Router {
         // 主题管理
         .route("/admin/theme", get(theme::theme_settings).post(theme::save_theme_settings))
         .route("/admin/theme/switch", post(theme::switch_theme))
+        // 常规设置
+        .route("/admin/settings", get(settings::settings_page).post(settings::save_settings))
         // 插件自定义后台页面
         .route("/admin/ext/{plugin}/{slug}", get(plugin_admin_page))
         // 废弃路由重定向
@@ -86,10 +96,16 @@ pub fn router(state: AppState) -> Router {
     .append_index_html_on_directories(true);
 
     Router::new()
+        .merge(install_routes)
         .merge(public_routes)
         .merge(protected_routes)
         .nest_service("/media", media_service)
         .fallback_service(static_site)
+        // 安装检测中间件应用于所有路由
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            install::install_check_middleware,
+        ))
         .with_state(state)
 }
 

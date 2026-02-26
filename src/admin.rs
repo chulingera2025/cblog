@@ -18,6 +18,7 @@ pub mod pages;
 pub mod plugins;
 pub mod posts;
 pub mod profile;
+pub mod settings;
 pub mod theme;
 
 pub fn router(state: AppState) -> Router {

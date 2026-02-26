@@ -159,9 +159,6 @@ async fn run_server(
 ) -> anyhow::Result<()> {
     let app_state = state::AppState::new(root.clone(), site_config).await?;
 
-    // 首次启动时创建默认管理员
-    ensure_default_admin(&app_state).await?;
-
     // 启动后台定时清理过期 token
     admin::cleanup::spawn_token_cleanup(app_state.clone());
 
@@ -172,37 +169,5 @@ async fn run_server(
     tracing::info!("后台管理服务启动：http://{}", addr);
 
     axum::serve(listener, app).await?;
-    Ok(())
-}
-
-/// 如果 users 表为空，创建默认管理员账号 admin/admin
-async fn ensure_default_admin(state: &state::AppState) -> anyhow::Result<()> {
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.db)
-        .await?;
-
-    if count.0 == 0 {
-        let id = ulid::Ulid::new().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // argon2 哈希默认密码
-        use argon2::PasswordHasher;
-        let salt = argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-        let hash = argon2::Argon2::default()
-            .hash_password(b"admin", &salt)
-            .map_err(|e| anyhow::anyhow!("密码哈希失败：{}", e))?
-            .to_string();
-
-        sqlx::query("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)")
-            .bind(&id)
-            .bind("admin")
-            .bind(&hash)
-            .bind(&now)
-            .execute(&state.db)
-            .await?;
-
-        tracing::warn!("已创建默认管理员账号 admin/admin，请尽快修改密码！");
-    }
-
     Ok(())
 }

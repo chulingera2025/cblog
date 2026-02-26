@@ -57,21 +57,6 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     .await
     .unwrap_or_default();
 
-    #[derive(sqlx::FromRow)]
-    struct BuildRow {
-        status: String,
-        started_at: String,
-        finished_at: Option<String>,
-    }
-
-    let last_build: Option<BuildRow> = sqlx::query_as::<_, BuildRow>(
-        "SELECT status, started_at, finished_at FROM build_history ORDER BY started_at DESC LIMIT 1",
-    )
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
     let mut post_rows = String::new();
     for p in &recent_posts {
         let (badge_class, status_label) = match p.status.as_str() {
@@ -92,52 +77,6 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
             updated_at = crate::admin::layout::format_datetime(&p.updated_at),
         ));
     }
-
-    let build_section = match &last_build {
-        Some(b) => {
-            let (badge_class, label) = match b.status.as_str() {
-                "success" => ("badge-success", "成功"),
-                "failed" => ("badge-danger", "失败"),
-                _ => ("badge-warning", "进行中"),
-            };
-            let finished = b.finished_at.as_deref().unwrap_or("-");
-            format!(
-                r#"<div class="card" style="margin-bottom:24px;">
-                    <div class="card-header">
-                        <h2 class="card-title">最近构建</h2>
-                        <div>
-                            <a href="/admin/build" class="btn btn-secondary btn-sm">构建历史</a>
-                            <form method="POST" action="/admin/build" style="display:inline;">
-                                <button type="submit" class="btn btn-success btn-sm">触发构建</button>
-                            </form>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <p>状态：<span class="badge {badge_class}">{label}</span></p>
-                        <p>开始时间：{started_at}</p>
-                        <p>完成时间：{finished}</p>
-                    </div>
-                </div>"#,
-                badge_class = badge_class,
-                label = label,
-                started_at = html_escape(&b.started_at),
-                finished = html_escape(finished),
-            )
-        }
-        None => {
-            r#"<div class="card" style="margin-bottom:24px;">
-                    <div class="card-header">
-                        <h2 class="card-title">最近构建</h2>
-                    </div>
-                    <div class="card-body">
-                        <p class="empty-state">暂无构建记录</p>
-                        <form method="POST" action="/admin/build">
-                            <button type="submit" class="btn btn-success">触发构建</button>
-                        </form>
-                    </div>
-                </div>"#.to_string()
-        }
-    };
 
     let body = format!(
         r#"<div class="page-header">
@@ -161,7 +100,6 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
                 <div class="stat-label">媒体文件</div>
             </div>
         </div>
-        {build_section}
         <div class="card">
             <div class="card-header">
                 <h2 class="card-title">最近文章</h2>
@@ -175,7 +113,6 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
         published_posts = published_posts,
         total_pages = total_pages,
         total_media = total_media,
-        build_section = build_section,
         post_rows = post_rows,
     );
 

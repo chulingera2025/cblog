@@ -1,0 +1,10 @@
+services:
+  cblog:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/site
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped

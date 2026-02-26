@@ -10,6 +10,7 @@ pub mod dashboard;
 pub mod media;
 pub mod pages;
 pub mod posts;
+pub mod plugins;
 pub mod theme;
 
 pub fn router(state: AppState) -> Router {
@@ -46,6 +47,11 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/api/media", get(media::api_media_list))
         // 构建管理
         .route("/admin/build", get(build::build_history).post(build::trigger_build))
+        // 插件管理
+        .route("/admin/plugins", get(plugins::list_plugins))
+        .route("/admin/plugins/toggle", post(plugins::toggle_plugin))
+        .route("/admin/plugins/{name}", get(plugins::plugin_detail))
+        .route("/admin/plugins/{name}/config", post(plugins::save_plugin_config))
         // 主题管理
         .route("/admin/theme", get(theme::theme_settings).post(theme::save_theme_settings))
         .route("/admin/theme/switch", post(theme::switch_theme))

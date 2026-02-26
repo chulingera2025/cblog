@@ -1,0 +1,13 @@
+[plugin]
+name = "hello-world"
+version = "0.1.0"
+description = "示例插件：在构建日志中打印问候信息"
+
+[capabilities]
+reads = []
+writes = []
+generates = []
+
+[dependencies]
+after = []
+conflicts = []

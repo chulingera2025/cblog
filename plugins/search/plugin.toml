@@ -1,0 +1,13 @@
+[plugin]
+name = "search"
+version = "0.1.0"
+description = "生成客户端搜索索引（MiniSearch 兼容 JSON 格式）"
+
+[capabilities]
+reads = ["post.title", "post.content", "post.tags"]
+writes = []
+generates = ["public/search-index.json"]
+
+[dependencies]
+after = []
+conflicts = []

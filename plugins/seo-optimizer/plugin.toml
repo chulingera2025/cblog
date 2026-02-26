@@ -1,0 +1,13 @@
+[plugin]
+name = "seo-optimizer"
+version = "0.1.0"
+description = "自动生成 robots.txt 和 SEO 相关文件"
+
+[capabilities]
+reads = ["config.site_url"]
+writes = []
+generates = ["public/robots.txt"]
+
+[dependencies]
+after = []
+conflicts = []

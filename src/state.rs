@@ -43,6 +43,9 @@ impl AppState {
             .await
             .map_err(|e| anyhow::anyhow!("数据库迁移失败：{}", e))?;
 
+        // 将 posts.meta 中的 tags/category 迁移到关联表（幂等操作）
+        migrate_post_taxonomy(&pool).await;
+
         let (build_events, _) = broadcast::channel::<BuildEvent>(64);
 
         // 扫描已启用插件的 admin 页面声明
@@ -100,4 +103,115 @@ fn collect_plugin_admin_pages(project_root: &std::path::Path, config: &SiteConfi
         }
     }
     pages
+}
+
+/// 从 posts.meta JSON 中的 tags/category 迁移到独立关联表
+/// 仅对尚未在关联表中存在的文章做迁移，已有关联的跳过
+async fn migrate_post_taxonomy(pool: &SqlitePool) {
+    use sqlx::Row;
+
+    let rows = sqlx::query("SELECT id, meta FROM posts")
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+    for row in rows {
+        let post_id: String = row.get("id");
+        let meta_str: String = row.get("meta");
+        let meta: serde_json::Value = serde_json::from_str(&meta_str).unwrap_or_default();
+
+        // 迁移标签
+        let tags_str = meta["tags"].as_str().unwrap_or("");
+        let tags: Vec<&str> = tags_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        for tag_name in tags {
+            let slug = generate_slug(tag_name);
+            let tag_id = ensure_tag(pool, tag_name, &slug).await;
+            if let Some(tid) = tag_id {
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)",
+                )
+                .bind(&post_id)
+                .bind(&tid)
+                .execute(pool)
+                .await;
+            }
+        }
+
+        // 迁移分类
+        let category_str = meta["category"].as_str().unwrap_or("").trim();
+        if !category_str.is_empty() {
+            let slug = generate_slug(category_str);
+            let cat_id = ensure_category(pool, category_str, &slug).await;
+            if let Some(cid) = cat_id {
+                let _ = sqlx::query(
+                    "INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)",
+                )
+                .bind(&post_id)
+                .bind(&cid)
+                .execute(pool)
+                .await;
+            }
+        }
+    }
+}
+
+async fn ensure_tag(pool: &SqlitePool, name: &str, slug: &str) -> Option<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+    if let Some((id,)) = existing {
+        return Some(id);
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT INTO tags (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(slug)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .ok()?;
+    Some(id)
+}
+
+async fn ensure_category(pool: &SqlitePool, name: &str, slug: &str) -> Option<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM categories WHERE name = ?")
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .ok()?;
+
+    if let Some((id,)) = existing {
+        return Some(id);
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT INTO categories (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(slug)
+        .bind(&now)
+        .execute(pool)
+        .await
+        .ok()?;
+    Some(id)
+}
+
+fn generate_slug(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }

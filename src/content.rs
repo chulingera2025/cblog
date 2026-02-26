@@ -34,7 +34,6 @@ impl MarkdownContent {
         self.html.get_or_init(|| markdown::render_markdown(&self.raw))
     }
 
-    #[allow(dead_code)]
     pub fn set_html(&self, html: String) {
         let _ = self.html.set(html);
     }

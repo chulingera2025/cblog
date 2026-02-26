@@ -986,6 +986,234 @@ a:hover {
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .form-row { grid-template-columns: 1fr; }
 }
+
+/* ── Editor ── */
+.editor-wrap {
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--c-bg-card);
+}
+
+.editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 8px;
+    background: #FAFBFC;
+    border-bottom: 1px solid var(--c-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.toolbar-group {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--c-border);
+    margin: 0 4px;
+}
+
+.editor-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--c-text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background var(--transition), color var(--transition);
+}
+
+.editor-toolbar button:hover {
+    background: var(--c-border);
+    color: var(--c-text-primary);
+}
+
+.editor-toolbar button.active {
+    background: var(--c-brand);
+    color: #fff;
+}
+
+.editor-toolbar select {
+    padding: 4px 8px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--c-text-body);
+    background: var(--c-bg-card);
+    cursor: pointer;
+    outline: none;
+}
+
+.editor-content .ProseMirror {
+    min-height: 400px;
+    padding: 20px;
+    outline: none;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--c-text-body);
+}
+
+.editor-content .ProseMirror:focus {
+    outline: none;
+}
+
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: var(--c-text-secondary);
+    pointer-events: none;
+    height: 0;
+}
+
+.editor-content .ProseMirror h1 { font-size: 2em; font-weight: 700; margin: 1em 0 0.5em; color: var(--c-text-primary); }
+.editor-content .ProseMirror h2 { font-size: 1.5em; font-weight: 600; margin: 0.8em 0 0.4em; color: var(--c-text-primary); }
+.editor-content .ProseMirror h3 { font-size: 1.25em; font-weight: 600; margin: 0.6em 0 0.3em; color: var(--c-text-primary); }
+
+.editor-content .ProseMirror ul,
+.editor-content .ProseMirror ol {
+    padding-left: 1.5em;
+    margin: 0.5em 0;
+}
+
+.editor-content .ProseMirror blockquote {
+    border-left: 3px solid var(--c-brand);
+    padding-left: 1em;
+    margin: 1em 0;
+    color: var(--c-text-secondary);
+}
+
+.editor-content .ProseMirror pre {
+    background: #1E293B;
+    color: #E2E8F0;
+    border-radius: var(--radius);
+    padding: 16px;
+    margin: 1em 0;
+    overflow-x: auto;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+}
+
+.editor-content .ProseMirror code {
+    background: #F1F5F9;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.9em;
+}
+
+.editor-content .ProseMirror pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    color: inherit;
+}
+
+.editor-content .ProseMirror img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+    margin: 1em 0;
+}
+
+.editor-content .ProseMirror hr {
+    border: none;
+    border-top: 2px solid var(--c-border);
+    margin: 2em 0;
+}
+
+.editor-content .ProseMirror table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+}
+
+.editor-content .ProseMirror table td,
+.editor-content .ProseMirror table th {
+    border: 1px solid var(--c-border);
+    padding: 8px 12px;
+    text-align: left;
+}
+
+.editor-content .ProseMirror table th {
+    background: #FAFBFC;
+    font-weight: 600;
+}
+
+.editor-content .ProseMirror ul[data-type="taskList"] {
+    list-style: none;
+    padding-left: 0;
+}
+
+.editor-content .ProseMirror ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.editor-content .ProseMirror ul[data-type="taskList"] li label {
+    margin-top: 2px;
+}
+
+.editor-content .ProseMirror a {
+    color: var(--c-brand);
+    text-decoration: underline;
+}
+
+.media-picker-modal {
+    max-width: 720px;
+}
+
+.media-picker-modal .modal-body {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.media-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+}
+
+.media-picker-item {
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color var(--transition);
+}
+
+.media-picker-item:hover {
+    border-color: var(--c-brand);
+}
+
+.media-picker-item img {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    display: block;
+}
+
+.media-picker-item .name {
+    font-size: 11px;
+    padding: 4px;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 "#;
 
 // ── Toast JS ──
@@ -1041,3 +1269,304 @@ function confirmAction(title, message, formEl) {
     backdrop.onclick = function(e) { if (e.target === backdrop) backdrop.remove(); };
 }
 "#;
+
+const EDITOR_SCRIPT: &str = r#"
+import { Editor } from 'https://esm.sh/@tiptap/core@2'
+import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2'
+import Link from 'https://esm.sh/@tiptap/extension-link@2'
+import Image from 'https://esm.sh/@tiptap/extension-image@2'
+import Table from 'https://esm.sh/@tiptap/extension-table@2'
+import TableRow from 'https://esm.sh/@tiptap/extension-table-row@2'
+import TableCell from 'https://esm.sh/@tiptap/extension-table-cell@2'
+import TableHeader from 'https://esm.sh/@tiptap/extension-table-header@2'
+import Underline from 'https://esm.sh/@tiptap/extension-underline@2'
+import TextAlign from 'https://esm.sh/@tiptap/extension-text-align@2'
+import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2'
+import TextStyle from 'https://esm.sh/@tiptap/extension-text-style@2'
+import Color from 'https://esm.sh/@tiptap/extension-color@2'
+import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2'
+import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2'
+import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2'
+
+const contentDataEl = document.getElementById('editor-content-data');
+const initialContent = contentDataEl ? JSON.parse(contentDataEl.textContent) : '';
+
+const editor = new Editor({
+    element: document.getElementById('editor'),
+    extensions: [
+        StarterKit,
+        Link.configure({ openOnClick: false }),
+        Image,
+        Table.configure({ resizable: true }),
+        TableRow,
+        TableCell,
+        TableHeader,
+        Underline,
+        TextAlign.configure({ types: ['heading', 'paragraph'] }),
+        Placeholder.configure({ placeholder: '开始编写内容...' }),
+        TextStyle,
+        Color,
+        Highlight.configure({ multicolor: true }),
+        TaskList,
+        TaskItem.configure({ nested: true }),
+    ],
+    content: initialContent,
+    onUpdate({ editor }) {
+        document.getElementById('content-input').value = editor.getHTML();
+    },
+});
+
+// 初始化时同步一次
+document.getElementById('content-input').value = editor.getHTML();
+
+// 表单提交时确保最新内容
+document.querySelectorAll('form').forEach(form => {
+    form.addEventListener('submit', () => {
+        const input = document.getElementById('content-input');
+        if (input) input.value = editor.getHTML();
+    });
+});
+
+// 工具栏按钮绑定
+const toolbar = document.getElementById('editor-toolbar');
+if (toolbar) {
+    toolbar.querySelectorAll('button[data-cmd]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cmd = btn.dataset.cmd;
+            switch (cmd) {
+                case 'bold': editor.chain().focus().toggleBold().run(); break;
+                case 'italic': editor.chain().focus().toggleItalic().run(); break;
+                case 'underline': editor.chain().focus().toggleUnderline().run(); break;
+                case 'strike': editor.chain().focus().toggleStrike().run(); break;
+                case 'code': editor.chain().focus().toggleCode().run(); break;
+                case 'bulletList': editor.chain().focus().toggleBulletList().run(); break;
+                case 'orderedList': editor.chain().focus().toggleOrderedList().run(); break;
+                case 'taskList': editor.chain().focus().toggleTaskList().run(); break;
+                case 'blockquote': editor.chain().focus().toggleBlockquote().run(); break;
+                case 'codeBlock': editor.chain().focus().toggleCodeBlock().run(); break;
+                case 'hr': editor.chain().focus().setHorizontalRule().run(); break;
+                case 'alignLeft': editor.chain().focus().setTextAlign('left').run(); break;
+                case 'alignCenter': editor.chain().focus().setTextAlign('center').run(); break;
+                case 'alignRight': editor.chain().focus().setTextAlign('right').run(); break;
+                case 'undo': editor.chain().focus().undo().run(); break;
+                case 'redo': editor.chain().focus().redo().run(); break;
+                case 'link': {
+                    const url = prompt('输入链接 URL:');
+                    if (url) editor.chain().focus().setLink({ href: url }).run();
+                    break;
+                }
+                case 'image': {
+                    openMediaPicker(editor);
+                    break;
+                }
+                case 'table': {
+                    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+                    break;
+                }
+            }
+        });
+    });
+
+    // 标题选择器
+    const headingSelect = document.getElementById('tb-heading');
+    if (headingSelect) {
+        headingSelect.addEventListener('change', () => {
+            const val = headingSelect.value;
+            if (val === 'p') {
+                editor.chain().focus().setParagraph().run();
+            } else {
+                editor.chain().focus().toggleHeading({ level: parseInt(val) }).run();
+            }
+        });
+    }
+
+    // 更新工具栏激活状态
+    editor.on('selectionUpdate', () => updateToolbar());
+    editor.on('update', () => updateToolbar());
+
+    function updateToolbar() {
+        toolbar.querySelectorAll('button[data-cmd]').forEach(btn => {
+            const cmd = btn.dataset.cmd;
+            let isActive = false;
+            switch (cmd) {
+                case 'bold': isActive = editor.isActive('bold'); break;
+                case 'italic': isActive = editor.isActive('italic'); break;
+                case 'underline': isActive = editor.isActive('underline'); break;
+                case 'strike': isActive = editor.isActive('strike'); break;
+                case 'code': isActive = editor.isActive('code'); break;
+                case 'bulletList': isActive = editor.isActive('bulletList'); break;
+                case 'orderedList': isActive = editor.isActive('orderedList'); break;
+                case 'taskList': isActive = editor.isActive('taskList'); break;
+                case 'blockquote': isActive = editor.isActive('blockquote'); break;
+                case 'codeBlock': isActive = editor.isActive('codeBlock'); break;
+                case 'alignLeft': isActive = editor.isActive({ textAlign: 'left' }); break;
+                case 'alignCenter': isActive = editor.isActive({ textAlign: 'center' }); break;
+                case 'alignRight': isActive = editor.isActive({ textAlign: 'right' }); break;
+            }
+            btn.classList.toggle('active', isActive);
+        });
+
+        // 更新标题选择器
+        const headingSelect = document.getElementById('tb-heading');
+        if (headingSelect) {
+            if (editor.isActive('heading', { level: 1 })) headingSelect.value = '1';
+            else if (editor.isActive('heading', { level: 2 })) headingSelect.value = '2';
+            else if (editor.isActive('heading', { level: 3 })) headingSelect.value = '3';
+            else headingSelect.value = 'p';
+        }
+    }
+}
+
+// 媒体选择器
+function openMediaPicker(editor) {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML =
+        '<div class="modal media-picker-modal">' +
+            '<div class="modal-title">选择媒体</div>' +
+            '<div class="modal-body"><div class="media-picker-grid" id="media-picker-grid">加载中...</div></div>' +
+            '<div class="modal-actions">' +
+                '<button class="btn btn-secondary" id="media-picker-cancel">取消</button>' +
+                '<div style="flex:1"></div>' +
+                '<input type="text" id="media-picker-url" placeholder="或输入图片 URL..." class="form-input" style="width:240px;margin-right:8px;">' +
+                '<button class="btn btn-primary" id="media-picker-insert-url">插入 URL</button>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(backdrop);
+
+    document.getElementById('media-picker-cancel').onclick = () => backdrop.remove();
+    backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
+
+    document.getElementById('media-picker-insert-url').onclick = () => {
+        const url = document.getElementById('media-picker-url').value.trim();
+        if (url) {
+            editor.chain().focus().setImage({ src: url }).run();
+            backdrop.remove();
+        }
+    };
+
+    fetch('/admin/api/media')
+        .then(r => r.json())
+        .then(items => {
+            const grid = document.getElementById('media-picker-grid');
+            if (!items || items.length === 0) {
+                grid.innerHTML = '<p style="text-align:center;color:var(--c-text-secondary);">暂无媒体文件</p>';
+                return;
+            }
+            grid.innerHTML = '';
+            items.forEach(item => {
+                if (!item.url) return;
+                const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(item.url);
+                if (!isImage) return;
+                const el = document.createElement('div');
+                el.className = 'media-picker-item';
+                el.innerHTML = '<img src="' + item.url + '" alt="' + (item.filename || '') + '">' +
+                    '<div class="name">' + (item.filename || '') + '</div>';
+                el.onclick = () => {
+                    editor.chain().focus().setImage({ src: item.url }).run();
+                    backdrop.remove();
+                };
+                grid.appendChild(el);
+            });
+        })
+        .catch(() => {
+            document.getElementById('media-picker-grid').innerHTML =
+                '<p style="text-align:center;color:var(--c-danger);">加载媒体失败</p>';
+        });
+}
+"#;
+
+pub fn editor_toolbar() -> &'static str {
+    r#"<div class="editor-toolbar" id="editor-toolbar">
+    <div class="toolbar-group">
+        <select id="tb-heading">
+            <option value="p">正文</option>
+            <option value="1">标题 1</option>
+            <option value="2">标题 2</option>
+            <option value="3">标题 3</option>
+        </select>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+        <button type="button" data-cmd="bold" title="粗体"><b>B</b></button>
+        <button type="button" data-cmd="italic" title="斜体"><i>I</i></button>
+        <button type="button" data-cmd="underline" title="下划线"><u>U</u></button>
+        <button type="button" data-cmd="strike" title="删除线"><s>S</s></button>
+        <button type="button" data-cmd="code" title="行内代码">&lt;/&gt;</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+        <button type="button" data-cmd="bulletList" title="无序列表">•</button>
+        <button type="button" data-cmd="orderedList" title="有序列表">1.</button>
+        <button type="button" data-cmd="taskList" title="任务列表">☑</button>
+        <button type="button" data-cmd="blockquote" title="引用">❝</button>
+        <button type="button" data-cmd="codeBlock" title="代码块">{ }</button>
+        <button type="button" data-cmd="hr" title="分隔线">—</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+        <button type="button" data-cmd="link" title="链接">🔗</button>
+        <button type="button" data-cmd="image" title="图片">🖼</button>
+        <button type="button" data-cmd="table" title="表格">☰</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+        <button type="button" data-cmd="alignLeft" title="左对齐">⫷</button>
+        <button type="button" data-cmd="alignCenter" title="居中">≡</button>
+        <button type="button" data-cmd="alignRight" title="右对齐">⫸</button>
+    </div>
+    <div class="toolbar-divider"></div>
+    <div class="toolbar-group">
+        <button type="button" data-cmd="undo" title="撤销">↩</button>
+        <button type="button" data-cmd="redo" title="重做">↪</button>
+    </div>
+</div>"#
+}
+
+pub fn admin_editor_page(
+    title: &str,
+    active_path: &str,
+    body: &str,
+    initial_content: &str,
+    ctx: &PageContext,
+) -> String {
+    let sidebar = render_sidebar(active_path, ctx);
+
+    let content_json = serde_json::to_string(initial_content).unwrap_or_else(|_| "\"\"".to_string());
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} - {site_title} 管理后台</title>
+<style>{CSS}</style>
+</head>
+<body>
+<div class="admin-layout">
+{sidebar}
+<main class="admin-main">
+<div class="admin-content">
+{body}
+</div>
+</main>
+</div>
+<div id="toast-container" class="toast-container"></div>
+<script>{TOAST_SCRIPT}</script>
+<script>{CONFIRM_SCRIPT}</script>
+<script type="application/json" id="editor-content-data">{content_json}</script>
+<script type="module">{EDITOR_SCRIPT}</script>
+</body>
+</html>"#,
+        title = html_escape(title),
+        site_title = html_escape(&ctx.site_title),
+        CSS = CSS,
+        sidebar = sidebar,
+        body = body,
+        TOAST_SCRIPT = TOAST_SCRIPT,
+        CONFIRM_SCRIPT = CONFIRM_SCRIPT,
+        content_json = content_json,
+        EDITOR_SCRIPT = EDITOR_SCRIPT,
+    )
+}

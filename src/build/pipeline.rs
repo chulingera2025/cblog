@@ -1,6 +1,7 @@
 use crate::build::graph::DepGraph;
 use crate::build::incremental::{BuildStats, HashCache};
 use crate::build::stages;
+use crate::build::stages::load::DbPost;
 use crate::config::SiteConfig;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -37,6 +38,7 @@ pub fn execute(
     config: &SiteConfig,
     plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
     theme_saved_config: HashMap<String, serde_json::Value>,
+    db_posts: Vec<DbPost>,
 ) -> Result<BuildStats> {
     tracing::info!("开始构建...");
     let start = std::time::Instant::now();
@@ -69,9 +71,9 @@ pub fn execute(
         "project_root": project_root.to_string_lossy(),
     });
 
-    // 阶段 1: content.load - 加载内容文件
-    let posts = stages::load::load_posts(project_root, config)?;
-    tracing::info!("加载了 {} 篇文章", posts.len());
+    // 阶段 1: content.load - 从数据库加载内容
+    let posts = stages::load::load_posts_from_db(db_posts, config);
+    tracing::info!("从数据库加载了 {} 篇文章", posts.len());
 
     if let Some(ref eng) = engine {
         let load_ctx = serde_json::json!({

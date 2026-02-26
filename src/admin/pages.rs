@@ -3,7 +3,7 @@ use axum::response::{Html, Redirect};
 use serde::Deserialize;
 use sqlx::Row;
 
-use crate::admin::layout::{admin_page, html_escape, svg_icon, PageContext};
+use crate::admin::layout::{admin_editor_page, admin_page, editor_toolbar, html_escape, svg_icon, PageContext};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -155,6 +155,7 @@ pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
+    let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/pages" class="page-back">{icon_back} 返回页面列表</a>
 <div class="page-header">
@@ -171,7 +172,11 @@ pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
     </div>
     <div class="form-group">
         <label class="form-label">内容</label>
-        <textarea name="content" class="form-textarea code"></textarea>
+        <input type="hidden" name="content" id="content-input">
+        <div class="editor-wrap">
+            {toolbar}
+            <div id="editor" class="editor-content"></div>
+        </div>
     </div>
     <div class="form-row">
         <div class="form-group">
@@ -192,9 +197,10 @@ pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
+        toolbar = toolbar,
     );
 
-    Html(admin_page("新建页面", "/admin/pages", &body, &ctx))
+    Html(admin_editor_page("新建页面", "/admin/pages", &body, "", &ctx))
 }
 
 pub async fn create_page(
@@ -256,6 +262,7 @@ pub async fn edit_page_page(
     let pg_status: &str = pg.get("status");
     let pg_template: Option<&str> = pg.get("template");
 
+    let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/pages" class="page-back">{icon_back} 返回页面列表</a>
 <div class="page-header">
@@ -275,7 +282,11 @@ pub async fn edit_page_page(
     </div>
     <div class="form-group">
         <label class="form-label">内容</label>
-        <textarea name="content" class="form-textarea code">{content}</textarea>
+        <input type="hidden" name="content" id="content-input">
+        <div class="editor-wrap">
+            {toolbar}
+            <div id="editor" class="editor-content"></div>
+        </div>
     </div>
     <div class="form-row">
         <div class="form-group">
@@ -299,13 +310,13 @@ pub async fn edit_page_page(
         id = html_escape(pg_id),
         title = html_escape(pg_title),
         slug = html_escape(pg_slug),
-        content = html_escape(pg_content),
+        toolbar = toolbar,
         sel_draft = if pg_status == "draft" { "selected" } else { "" },
         sel_pub = if pg_status == "published" { "selected" } else { "" },
         template = html_escape(pg_template.unwrap_or("")),
     );
 
-    Html(admin_page("编辑页面", "/admin/pages", &body, &ctx))
+    Html(admin_editor_page("编辑页面", "/admin/pages", &body, pg_content, &ctx))
 }
 
 pub async fn update_page(

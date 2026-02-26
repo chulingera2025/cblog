@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 use tokio::sync::broadcast;
 
@@ -19,6 +20,10 @@ pub struct AppState {
     pub login_limiter: Arc<std::sync::Mutex<HashMap<String, Vec<Instant>>>>,
     /// 插件注册的后台侧边栏页面
     pub plugin_admin_pages: Vec<PluginSidebarEntry>,
+    /// 构建防抖计数器：用于判断是否有更新的构建请求
+    pub build_request_counter: Arc<AtomicU64>,
+    /// 构建互斥锁：确保任何时刻只有一个构建在执行
+    pub build_mutex: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -45,6 +50,8 @@ impl AppState {
             build_events,
             login_limiter: Arc::new(std::sync::Mutex::new(HashMap::new())),
             plugin_admin_pages,
+            build_request_counter: Arc::new(AtomicU64::new(0)),
+            build_mutex: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 }

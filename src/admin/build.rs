@@ -191,6 +191,32 @@ pub async fn trigger_build(State(state): State<AppState>) -> StatusCode {
             })
             .unwrap_or_default();
 
+    // 预取发布状态的文章
+    use crate::build::stages::load::DbPost;
+
+    let db_posts: Vec<DbPost> = sqlx::query(
+        "SELECT id, slug, title, content, status, created_at, updated_at, meta FROM posts WHERE status = 'published'"
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|row| {
+        let meta_str: String = row.get("meta");
+        let meta: serde_json::Value = serde_json::from_str(&meta_str).unwrap_or_default();
+        DbPost {
+            id: row.get("id"),
+            slug: row.get("slug"),
+            title: row.get("title"),
+            content: row.get("content"),
+            status: row.get("status"),
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+            meta,
+        }
+    })
+    .collect();
+
     // 后台执行构建，不阻塞响应
     let project_root = state.project_root.clone();
     let db = state.db.clone();
@@ -202,7 +228,7 @@ pub async fn trigger_build(State(state): State<AppState>) -> StatusCode {
         let build_root = project_root.clone();
         let build_config = Arc::clone(&config);
         let result = tokio::task::spawn_blocking(move || {
-            crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config)
+            crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config, db_posts)
         })
         .await;
 

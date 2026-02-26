@@ -4,6 +4,7 @@ pub mod incremental;
 pub mod pipeline;
 pub mod stages;
 
+use crate::build::stages::load::DbPost;
 use crate::config::SiteConfig;
 use anyhow::Result;
 use incremental::BuildStats;
@@ -16,6 +17,7 @@ pub fn run(
     clean: bool,
     plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
     theme_saved_config: HashMap<String, serde_json::Value>,
+    db_posts: Vec<DbPost>,
 ) -> Result<BuildStats> {
     let output_dir = project_root.join(&config.build.output_dir);
 
@@ -33,7 +35,7 @@ pub fn run(
 
     std::fs::create_dir_all(&output_dir)?;
 
-    let stats = pipeline::execute(project_root, config, plugin_configs, theme_saved_config)?;
+    let stats = pipeline::execute(project_root, config, plugin_configs, theme_saved_config, db_posts)?;
 
     Ok(stats)
 }

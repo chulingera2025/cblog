@@ -202,7 +202,7 @@ pub fn build_scss_overrides(values: &HashMap<String, serde_json::Value>) -> Stri
     for (key, val) in values {
         let scss_var = key.replace('_', "-");
         match val {
-            serde_json::Value::String(s) => {
+            serde_json::Value::String(s) if !s.is_empty() => {
                 overrides.push_str(&format!("${scss_var}: {s};\n"));
             }
             serde_json::Value::Number(n) => {

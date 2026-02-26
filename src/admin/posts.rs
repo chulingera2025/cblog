@@ -202,56 +202,75 @@ pub async fn new_post_page(State(state): State<AppState>) -> Html<String> {
     let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/posts" class="page-back">{icon_back} 返回文章列表</a>
-<div class="page-header">
-    <h1 class="page-title">新建文章</h1>
-</div>
-<form method="POST" action="/admin/posts">
-    <div class="form-group">
-        <label class="form-label">标题</label>
-        <input type="text" name="title" class="form-input" required>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Slug（留空自动生成）</label>
-        <input type="text" name="slug" class="form-input">
-    </div>
-    <div class="form-group">
-        <label class="form-label">内容</label>
-        <input type="hidden" name="content" id="content-input">
-        <div class="editor-wrap">
-            {toolbar}
-            <div id="editor" class="editor-content"></div>
+<form method="POST" action="/admin/posts" id="post-form">
+    <input type="hidden" name="content" id="content-input">
+    <input type="hidden" name="tags" id="tags-input">
+    <input type="hidden" name="category" id="category-input">
+
+    <div class="editor-layout">
+        <div class="editor-main">
+            <input type="text" name="title" class="editor-title-input" placeholder="输入文章标题..." required>
+            <div class="editor-wrap">
+                {toolbar}
+                <div id="editor" class="editor-content"></div>
+            </div>
         </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">状态</label>
-            <select name="status" class="form-select">
-                <option value="draft">草稿</option>
-                <option value="published">已发布</option>
-            </select>
+
+        <div class="editor-sidebar">
+            <div class="card">
+                <div class="card-header"><span class="card-title">发布</span></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <select name="status" class="form-select">
+                            <option value="draft">草稿</option>
+                            <option value="published">已发布</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Slug（留空自动生成）</label>
+                        <input type="text" name="slug" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">创建文章</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">分类</span></div>
+                <div class="card-body">
+                    <select id="category-select" class="form-select">
+                        <option value="">无分类</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">标签</span></div>
+                <div class="card-body">
+                    <div class="tag-input-container" id="tag-container">
+                        <input type="text" id="tag-input-field" placeholder="输入标签回车添加...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">封面图</span></div>
+                <div class="card-body">
+                    <input type="text" name="cover_image" id="cover-input" class="form-input" placeholder="图片 URL">
+                    <div class="cover-preview" id="cover-preview" style="display:none;">
+                        <img id="cover-preview-img" src="" alt="封面预览">
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="openMediaPicker(null, 'cover')">从媒体库选择</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">摘要</span></div>
+                <div class="card-body">
+                    <textarea name="excerpt" class="form-textarea" rows="3" placeholder="文章摘要..."></textarea>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">分类</label>
-            <input type="text" name="category" class="form-input">
-        </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">标签（逗号分隔）</label>
-            <input type="text" name="tags" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label">封面图 URL</label>
-            <input type="text" name="cover_image" class="form-input">
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="form-label">摘要</label>
-        <input type="text" name="excerpt" class="form-input">
-    </div>
-    <div class="form-group">
-        <button type="submit" class="btn btn-primary">创建文章</button>
-        <a href="/admin/posts" class="btn btn-secondary">取消</a>
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
@@ -351,62 +370,81 @@ pub async fn edit_post_page(
     let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/posts" class="page-back">{icon_back} 返回文章列表</a>
-<div class="page-header">
-    <h1 class="page-title">编辑文章</h1>
-    <div style="display:flex;gap:8px;">
-        {publish_btn}
-        <form method="POST" action="/admin/posts/{id}/delete" onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;">
-            <button type="submit" class="btn btn-danger">删除</button>
-        </form>
-    </div>
-</div>
-<form method="POST" action="/admin/posts/{id}">
-    <div class="form-group">
-        <label class="form-label">标题</label>
-        <input type="text" name="title" value="{title}" class="form-input" required>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Slug</label>
-        <input type="text" name="slug" value="{slug}" class="form-input">
-    </div>
-    <div class="form-group">
-        <label class="form-label">内容</label>
-        <input type="hidden" name="content" id="content-input">
-        <div class="editor-wrap">
-            {toolbar}
-            <div id="editor" class="editor-content"></div>
+<form method="POST" action="/admin/posts/{id}" id="post-form">
+    <input type="hidden" name="content" id="content-input">
+    <input type="hidden" name="tags" id="tags-input" value="{tags}">
+    <input type="hidden" name="category" id="category-input" value="{category}">
+
+    <div class="editor-layout">
+        <div class="editor-main">
+            <input type="text" name="title" class="editor-title-input" placeholder="输入文章标题..." value="{title}" required>
+            <div class="editor-wrap">
+                {toolbar}
+                <div id="editor" class="editor-content"></div>
+            </div>
         </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">状态</label>
-            <select name="status" class="form-select">
-                <option value="draft" {sel_draft}>草稿</option>
-                <option value="published" {sel_pub}>已发布</option>
-            </select>
+
+        <div class="editor-sidebar">
+            <div class="card">
+                <div class="card-header"><span class="card-title">发布</span></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <select name="status" class="form-select">
+                            <option value="draft" {sel_draft}>草稿</option>
+                            <option value="published" {sel_pub}>已发布</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Slug</label>
+                        <input type="text" name="slug" value="{slug}" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">保存修改</button>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        {publish_btn}
+                        <form method="POST" action="/admin/posts/{id}/delete" style="flex:1;" onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;">
+                            <button type="submit" class="btn btn-danger" style="width:100%;">删除</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">分类</span></div>
+                <div class="card-body">
+                    <select id="category-select" class="form-select">
+                        <option value="">无分类</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">标签</span></div>
+                <div class="card-body">
+                    <div class="tag-input-container" id="tag-container">
+                        <input type="text" id="tag-input-field" placeholder="输入标签回车添加...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">封面图</span></div>
+                <div class="card-body">
+                    <input type="text" name="cover_image" id="cover-input" value="{cover_image}" class="form-input" placeholder="图片 URL">
+                    <div class="cover-preview" id="cover-preview" style="{cover_display}">
+                        <img id="cover-preview-img" src="{cover_image}" alt="封面预览">
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="openMediaPicker(null, 'cover')">从媒体库选择</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">摘要</span></div>
+                <div class="card-body">
+                    <textarea name="excerpt" class="form-textarea" rows="3" placeholder="文章摘要...">{excerpt}</textarea>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">分类</label>
-            <input type="text" name="category" value="{category}" class="form-input">
-        </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">标签（逗号分隔）</label>
-            <input type="text" name="tags" value="{tags}" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label">封面图 URL</label>
-            <input type="text" name="cover_image" value="{cover_image}" class="form-input">
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="form-label">摘要</label>
-        <input type="text" name="excerpt" value="{excerpt}" class="form-input">
-    </div>
-    <div class="form-group">
-        <button type="submit" class="btn btn-primary">保存修改</button>
-        <a href="/admin/posts" class="btn btn-secondary">返回列表</a>
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
@@ -419,15 +457,16 @@ pub async fn edit_post_page(
         tags = html_escape(tags),
         category = html_escape(category),
         cover_image = html_escape(cover_image),
+        cover_display = if cover_image.is_empty() { "display:none;" } else { "" },
         excerpt = html_escape(excerpt),
         publish_btn = if post_status == "draft" {
             format!(
-                r#"<form method="POST" action="/admin/posts/{}/publish"><button type="submit" class="btn btn-success">发布</button></form>"#,
+                r#"<form method="POST" action="/admin/posts/{}/publish" style="flex:1;"><button type="submit" class="btn btn-success" style="width:100%;">发布</button></form>"#,
                 html_escape(post_id)
             )
         } else {
             format!(
-                r#"<form method="POST" action="/admin/posts/{}/unpublish"><button type="submit" class="btn btn-secondary">取消发布</button></form>"#,
+                r#"<form method="POST" action="/admin/posts/{}/unpublish" style="flex:1;"><button type="submit" class="btn btn-secondary" style="width:100%;">取消发布</button></form>"#,
                 html_escape(post_id)
             )
         },

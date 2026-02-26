@@ -295,6 +295,13 @@ pub async fn create_post(
     .execute(&state.db)
     .await;
 
+    if status == "published" {
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            crate::admin::build::spawn_build(&state_clone, "auto:create_post").await;
+        });
+    }
+
     Redirect::to(&format!("/admin/posts/{id}"))
 }
 
@@ -454,6 +461,11 @@ pub async fn update_post(
     .execute(&state.db)
     .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:update_post").await;
+    });
+
     Redirect::to(&format!("/admin/posts/{id}"))
 }
 
@@ -467,6 +479,11 @@ pub async fn delete_post(
         .bind(&id)
         .execute(&state.db)
         .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:delete_post").await;
+    });
 
     Redirect::to("/admin/posts")
 }
@@ -482,6 +499,11 @@ pub async fn publish_post(
         .execute(&state.db)
         .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:publish_post").await;
+    });
+
     Redirect::to(&format!("/admin/posts/{id}"))
 }
 
@@ -495,6 +517,11 @@ pub async fn unpublish_post(
         .bind(&id)
         .execute(&state.db)
         .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:unpublish_post").await;
+    });
 
     Redirect::to(&format!("/admin/posts/{id}"))
 }

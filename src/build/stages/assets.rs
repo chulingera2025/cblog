@@ -38,10 +38,20 @@ fn compile_scss(
     let values = default_values(&resolved.config_schema);
     let overrides = build_scss_overrides(&values);
 
-    let source = std::fs::read_to_string(&main_scss)
+    let mut source = std::fs::read_to_string(&main_scss)
         .with_context(|| format!("读取 main.scss 失败: {}", main_scss.display()))?;
 
-    // 将覆盖变量前置到源码中，确保优先级高于 !default 声明
+    // @use 模块作用域不允许同名变量重复定义，
+    // 将 @use "variables" 替换为内联内容，使覆盖变量和 !default 声明处于同一作用域
+    let variables_path = scss_dir.join("_variables.scss");
+    if variables_path.exists() {
+        let variables_content = std::fs::read_to_string(&variables_path)
+            .with_context(|| "读取 _variables.scss 失败")?;
+        source = source
+            .replace("@use \"variables\" as *;", &variables_content)
+            .replace("@use 'variables' as *;", &variables_content);
+    }
+
     let input = format!("{overrides}\n{source}");
 
     let options = grass::Options::default().load_path(&scss_dir);

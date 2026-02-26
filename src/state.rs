@@ -1,3 +1,4 @@
+use crate::admin::layout::PluginSidebarEntry;
 use crate::build::events::BuildEvent;
 use crate::config::SiteConfig;
 use anyhow::Result;
@@ -16,6 +17,8 @@ pub struct AppState {
     pub build_events: broadcast::Sender<BuildEvent>,
     /// 登录速率限制：IP -> 登录尝试时间戳列表
     pub login_limiter: Arc<std::sync::Mutex<HashMap<String, Vec<Instant>>>>,
+    /// 插件注册的后台侧边栏页面
+    pub plugin_admin_pages: Vec<PluginSidebarEntry>,
 }
 
 impl AppState {
@@ -32,12 +35,36 @@ impl AppState {
 
         let (build_events, _) = broadcast::channel::<BuildEvent>(64);
 
+        // 扫描已启用插件的 admin 页面声明
+        let plugin_admin_pages = collect_plugin_admin_pages(&project_root, &config);
+
         Ok(Self {
             db: pool,
             config: Arc::new(config),
             project_root,
             build_events,
             login_limiter: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            plugin_admin_pages,
         })
     }
+}
+
+fn collect_plugin_admin_pages(project_root: &std::path::Path, config: &SiteConfig) -> Vec<PluginSidebarEntry> {
+    use crate::plugin::registry::load_plugin_toml;
+
+    let mut pages = Vec::new();
+    for name in &config.plugins.enabled {
+        let toml_path = project_root.join("plugins").join(name).join("plugin.toml");
+        if let Ok(toml) = load_plugin_toml(&toml_path) {
+            for page in &toml.admin.pages {
+                pages.push(PluginSidebarEntry {
+                    plugin_name: name.clone(),
+                    label: page.label.clone(),
+                    href: format!("/admin/ext/{}/{}", name, page.slug),
+                    icon: page.icon.clone(),
+                });
+            }
+        }
+    }
+    pages
 }

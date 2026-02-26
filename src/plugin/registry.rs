@@ -10,6 +10,24 @@ pub struct PluginToml {
     pub capabilities: PluginCapabilities,
     #[serde(default)]
     pub dependencies: PluginDependencies,
+    #[serde(default)]
+    pub admin: PluginAdmin,
+}
+
+/// [admin] 后台管理页面声明
+#[derive(Debug, Default, Deserialize)]
+pub struct PluginAdmin {
+    #[serde(default)]
+    pub pages: Vec<PluginAdminPage>,
+}
+
+/// [[admin.pages]] 单个后台页面
+#[derive(Debug, Deserialize)]
+pub struct PluginAdminPage {
+    pub label: String,
+    pub slug: String,
+    #[serde(default)]
+    pub icon: String,
 }
 
 /// [plugin] 元数据
@@ -59,12 +77,17 @@ pub struct PluginInfo {
     pub dependencies: PluginDependencies,
 }
 
-/// 从 plugin.toml 加载插件元数据
-pub fn load_plugin_info(path: &Path) -> Result<PluginInfo> {
+/// 从 plugin.toml 加载完整的 PluginToml 结构
+pub fn load_plugin_toml(path: &Path) -> Result<PluginToml> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("读取 plugin.toml 失败: {}", path.display()))?;
-    let toml: PluginToml = toml::from_str(&content)
-        .with_context(|| format!("解析 plugin.toml 失败: {}", path.display()))?;
+    toml::from_str(&content)
+        .with_context(|| format!("解析 plugin.toml 失败: {}", path.display()))
+}
+
+/// 从 plugin.toml 加载插件元数据
+pub fn load_plugin_info(path: &Path) -> Result<PluginInfo> {
+    let toml = load_plugin_toml(path)?;
 
     Ok(PluginInfo {
         name: toml.plugin.name,

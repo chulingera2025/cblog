@@ -1,15 +1,8 @@
 use axum::extract::State;
 use axum::response::Html;
 
-use crate::admin::layout::{admin_page, html_escape};
+use crate::admin::layout::{admin_page, html_escape, PageContext};
 use crate::state::AppState;
-
-const EXTRA_STYLE: &str = r#"
-    .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
-    .stat-card { background:#fff; padding:20px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.1); text-align:center; }
-    .stat-card .number { font-size:32px; font-weight:bold; color:#4a6cf7; }
-    .stat-card .label { font-size:14px; color:#666; margin-top:4px; }
-"#;
 
 pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     #[derive(sqlx::FromRow)]
@@ -81,20 +74,15 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
 
     let mut post_rows = String::new();
     for p in &recent_posts {
-        let badge_class = match p.status.as_str() {
-            "published" => "status-success",
-            "draft" => "status-running",
-            _ => "",
-        };
-        let status_label = match p.status.as_str() {
-            "published" => "已发布",
-            "draft" => "草稿",
-            _ => &p.status,
+        let (badge_class, status_label) = match p.status.as_str() {
+            "published" => ("badge-success", "已发布"),
+            "draft" => ("badge-warning", "草稿"),
+            _ => ("badge-neutral", p.status.as_str()),
         };
         post_rows.push_str(&format!(
             r#"<tr>
-                <td><a href="/admin/posts/{id}/edit">{title}</a></td>
-                <td><span class="status-badge {badge_class}">{status_label}</span></td>
+                <td><a href="/admin/posts/{id}">{title}</a></td>
+                <td><span class="badge {badge_class}">{status_label}</span></td>
                 <td>{updated_at}</td>
             </tr>"#,
             id = p.id,
@@ -108,22 +96,26 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     let build_section = match &last_build {
         Some(b) => {
             let (badge_class, label) = match b.status.as_str() {
-                "success" => ("status-success", "成功"),
-                "failed" => ("status-failed", "失败"),
-                _ => ("status-running", "进行中"),
+                "success" => ("badge-success", "成功"),
+                "failed" => ("badge-danger", "失败"),
+                _ => ("badge-warning", "进行中"),
             };
             let finished = b.finished_at.as_deref().unwrap_or("-");
             format!(
-                r#"<div style="background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:24px;">
-                    <h2 style="margin-bottom:12px;">最近构建</h2>
-                    <p>状态：<span class="status-badge {badge_class}">{label}</span></p>
-                    <p style="margin-top:8px;">开始时间：{started_at}</p>
-                    <p>完成时间：{finished}</p>
-                    <div style="margin-top:12px;">
-                        <a href="/admin/build" class="btn btn-primary" style="margin-right:8px;">构建历史</a>
-                        <form method="POST" action="/admin/build" style="display:inline;">
-                            <button type="submit" class="btn btn-success">触发构建</button>
-                        </form>
+                r#"<div class="card" style="margin-bottom:24px;">
+                    <div class="card-header">
+                        <h2 class="card-title">最近构建</h2>
+                        <div>
+                            <a href="/admin/build" class="btn btn-secondary btn-sm">构建历史</a>
+                            <form method="POST" action="/admin/build" style="display:inline;">
+                                <button type="submit" class="btn btn-success btn-sm">触发构建</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p>状态：<span class="badge {badge_class}">{label}</span></p>
+                        <p>开始时间：{started_at}</p>
+                        <p>完成时间：{finished}</p>
                     </div>
                 </div>"#,
                 badge_class = badge_class,
@@ -133,11 +125,13 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
             )
         }
         None => {
-            r#"<div style="background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:24px;">
-                    <h2 style="margin-bottom:12px;">最近构建</h2>
-                    <p style="color:#999;">暂无构建记录</p>
-                    <div style="margin-top:12px;">
-                        <form method="POST" action="/admin/build" style="display:inline;">
+            r#"<div class="card" style="margin-bottom:24px;">
+                    <div class="card-header">
+                        <h2 class="card-title">最近构建</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="empty-state">暂无构建记录</p>
+                        <form method="POST" action="/admin/build">
                             <button type="submit" class="btn btn-success">触发构建</button>
                         </form>
                     </div>
@@ -146,34 +140,36 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     };
 
     let body = format!(
-        r#"<div class="container">
-            <h1>仪表盘</h1>
-            <div class="stat-grid">
-                <div class="stat-card">
-                    <div class="number">{total_posts}</div>
-                    <div class="label">文章总数</div>
-                </div>
-                <div class="stat-card">
-                    <div class="number">{published_posts}</div>
-                    <div class="label">已发布文章</div>
-                </div>
-                <div class="stat-card">
-                    <div class="number">{total_pages}</div>
-                    <div class="label">页面总数</div>
-                </div>
-                <div class="stat-card">
-                    <div class="number">{total_media}</div>
-                    <div class="label">媒体文件</div>
-                </div>
+        r#"<div class="page-header">
+            <h1 class="page-title">仪表盘</h1>
+        </div>
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-value">{total_posts}</div>
+                <div class="stat-label">文章总数</div>
             </div>
-            {build_section}
-            <div style="background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                <h2 style="margin-bottom:12px;">最近文章</h2>
-                <table>
-                    <thead><tr><th>标题</th><th>状态</th><th>更新时间</th></tr></thead>
-                    <tbody>{post_rows}</tbody>
-                </table>
+            <div class="stat-card">
+                <div class="stat-value">{published_posts}</div>
+                <div class="stat-label">已发布文章</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value">{total_pages}</div>
+                <div class="stat-label">页面总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{total_media}</div>
+                <div class="stat-label">媒体文件</div>
+            </div>
+        </div>
+        {build_section}
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">最近文章</h2>
+            </div>
+            <table>
+                <thead><tr><th>标题</th><th>状态</th><th>更新时间</th></tr></thead>
+                <tbody>{post_rows}</tbody>
+            </table>
         </div>"#,
         total_posts = total_posts,
         published_posts = published_posts,
@@ -183,5 +179,10 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
         post_rows = post_rows,
     );
 
-    Html(admin_page("仪表盘", EXTRA_STYLE, &body))
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
+    Html(admin_page("仪表盘", "/admin", &body, &ctx))
 }

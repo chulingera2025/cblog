@@ -135,6 +135,16 @@ const SIDEBAR_GROUPS: &[SidebarGroup] = &[
                 icon: "file",
             },
             SidebarItem {
+                label: "分类管理",
+                href: "/admin/categories",
+                icon: "folder",
+            },
+            SidebarItem {
+                label: "标签管理",
+                href: "/admin/tags",
+                icon: "tag",
+            },
+            SidebarItem {
                 label: "媒体库",
                 href: "/admin/media",
                 icon: "image",

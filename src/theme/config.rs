@@ -151,11 +151,10 @@ pub fn list_themes(project_root: &Path) -> Result<Vec<String>> {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             let theme_toml = entry.path().join("theme.toml");
-            if theme_toml.exists() {
-                if let Some(name) = entry.file_name().to_str() {
+            if theme_toml.exists()
+                && let Some(name) = entry.file_name().to_str() {
                     names.push(name.to_string());
                 }
-            }
         }
     }
     names.sort();

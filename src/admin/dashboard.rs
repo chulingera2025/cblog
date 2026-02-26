@@ -167,8 +167,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
             )
         }
         None => {
-            format!(
-                r#"<div style="background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:24px;">
+            r#"<div style="background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin-bottom:24px;">
                     <h2 style="margin-bottom:12px;">最近构建</h2>
                     <p style="color:#999;">暂无构建记录</p>
                     <div style="margin-top:12px;">
@@ -176,8 +175,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
                             <button type="submit" class="btn btn-success">触发构建</button>
                         </form>
                     </div>
-                </div>"#
-            )
+                </div>"#.to_string()
         }
     };
 

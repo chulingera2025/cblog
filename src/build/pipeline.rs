@@ -136,11 +136,10 @@ pub fn execute(
 
     // 更新配置文件哈希
     let config_path = project_root.join("cblog.toml");
-    if config_path.exists() {
-        if let Ok(hash) = HashCache::compute_hash(&config_path) {
+    if config_path.exists()
+        && let Ok(hash) = HashCache::compute_hash(&config_path) {
             hash_cache.update("cblog.toml".to_owned(), hash);
         }
-    }
 
     // 持久化缓存
     if let Err(e) = hash_cache.save() {

@@ -218,12 +218,11 @@ pub async fn toggle_plugin(
             if trimmed.starts_with('[') {
                 in_plugins_section = trimmed == "[plugins]";
             }
-            if in_plugins_section && !replaced && trimmed.starts_with("enabled") {
-                if trimmed.contains('=') {
+            if in_plugins_section && !replaced && trimmed.starts_with("enabled")
+                && trimmed.contains('=') {
                     replaced = true;
                     return enabled_str.clone();
                 }
-            }
             line.to_string()
         })
         .collect::<Vec<_>>()

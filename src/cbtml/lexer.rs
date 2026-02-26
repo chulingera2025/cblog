@@ -81,7 +81,7 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         let line_num = line_idx + 1;
 
         // 注释 {# ... #}
-        if trimmed.starts_with("{#") {
+        if let Some(after_open) = trimmed.strip_prefix("{#") {
             if let Some(end) = trimmed.find("#}") {
                 let comment = trimmed[2..end].trim().to_string();
                 tokens.push(Token {
@@ -95,7 +95,7 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
             }
             // 多行注释：收集直到 #}
             let comment_start_line = line_num;
-            let mut comment = trimmed[2..].to_string();
+            let mut comment = after_open.to_string();
             line_idx += 1;
             let mut found_end = false;
             while line_idx < lines.len() {
@@ -154,8 +154,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // extends 指令
-        if trimmed.starts_with("extends ") {
-            let parent = trimmed["extends ".len()..].trim().to_string();
+        if let Some(rest) = trimmed.strip_prefix("extends ") {
+            let parent = rest.trim().to_string();
             tokens.push(Token {
                 kind: TokenKind::Extends(parent),
                 indent,
@@ -167,8 +167,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // if 指令
-        if trimmed.starts_with("if ") {
-            let expr = trimmed["if ".len()..].trim().to_string();
+        if let Some(rest) = trimmed.strip_prefix("if ") {
+            let expr = rest.trim().to_string();
             tokens.push(Token {
                 kind: TokenKind::If(expr),
                 indent,
@@ -180,8 +180,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // else if 指令
-        if trimmed.starts_with("else if ") {
-            let expr = trimmed["else if ".len()..].trim().to_string();
+        if let Some(rest) = trimmed.strip_prefix("else if ") {
+            let expr = rest.trim().to_string();
             tokens.push(Token {
                 kind: TokenKind::ElseIf(expr),
                 indent,
@@ -217,8 +217,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // for var in collection
-        if trimmed.starts_with("for ") {
-            let rest = trimmed["for ".len()..].trim();
+        if let Some(after_for) = trimmed.strip_prefix("for ") {
+            let rest = after_for.trim();
             if let Some(in_pos) = rest.find(" in ") {
                 let var = rest[..in_pos].trim().to_string();
                 let collection = rest[in_pos + 4..].trim().to_string();
@@ -242,8 +242,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // slot 指令
-        if trimmed.starts_with("slot ") {
-            let name = trimmed["slot ".len()..].trim().to_string();
+        if let Some(rest) = trimmed.strip_prefix("slot ") {
+            let name = rest.trim().to_string();
             tokens.push(Token {
                 kind: TokenKind::Slot(name),
                 indent,
@@ -255,8 +255,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // include 指令
-        if trimmed.starts_with("include ") {
-            let path = trimmed["include ".len()..].trim().to_string();
+        if let Some(rest) = trimmed.strip_prefix("include ") {
+            let path = rest.trim().to_string();
             tokens.push(Token {
                 kind: TokenKind::Include(path),
                 indent,
@@ -268,8 +268,8 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // raw expr
-        if trimmed.starts_with("raw ") {
-            let expr = trimmed["raw ".len()..].trim().to_string();
+        if let Some(rest) = trimmed.strip_prefix("raw ") {
+            let expr = rest.trim().to_string();
             tokens.push(Token {
                 kind: TokenKind::Raw(expr),
                 indent,
@@ -281,13 +281,12 @@ pub fn tokenize(source: &str, file_name: &str) -> Result<Vec<Token>> {
         }
 
         // hook("name", data)
-        if trimmed.starts_with("hook(") {
-            if let Some(token) = parse_hook(trimmed, indent, line_num, indent_spaces + 1) {
+        if trimmed.starts_with("hook(")
+            && let Some(token) = parse_hook(trimmed, indent, line_num, indent_spaces + 1) {
                 tokens.push(token);
                 line_idx += 1;
                 continue;
             }
-        }
 
         // style 原生块：收集后续缩进更深的行作为内容
         if trimmed == "style" {

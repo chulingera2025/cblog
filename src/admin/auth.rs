@@ -204,8 +204,8 @@ async fn try_login(state: &AppState, form: &LoginForm) -> Result<(String, String
 pub async fn logout(State(state): State<AppState>, req: Request<axum::body::Body>) -> Response {
     let cookie_name = &state.config.auth.session_name;
 
-    if let Some(token) = extract_token_from_request(&req, cookie_name) {
-        if let Ok(claims) = decode_jwt(&token, &state.config.auth) {
+    if let Some(token) = extract_token_from_request(&req, cookie_name)
+        && let Ok(claims) = decode_jwt(&token, &state.config.auth) {
             let _ = sqlx::query("INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)")
                 .bind(&claims.jti)
                 .bind(chrono::DateTime::from_timestamp(claims.exp as i64, 0)
@@ -214,7 +214,6 @@ pub async fn logout(State(state): State<AppState>, req: Request<axum::body::Body
                 .execute(&state.db)
                 .await;
         }
-    }
 
     let clear_cookie = build_cookie(cookie_name, "", 0);
     let mut resp = Redirect::to("/admin/login").into_response();
@@ -269,8 +268,8 @@ pub async fn require_auth(
         let remaining = claims.exp.saturating_sub(now);
         let threshold = total_duration.as_secs() as usize / 3;
 
-        if remaining < threshold {
-            if let Ok((new_token, _)) = create_jwt(&claims.sub, &claims.username, config) {
+        if remaining < threshold
+            && let Ok((new_token, _)) = create_jwt(&claims.sub, &claims.username, config) {
                 let cookie = build_cookie(
                     cookie_name,
                     &new_token,
@@ -280,7 +279,6 @@ pub async fn require_auth(
                     resp.headers_mut().insert(SET_COOKIE, val);
                 }
             }
-        }
     }
 
     resp

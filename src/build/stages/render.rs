@@ -82,15 +82,14 @@ pub fn render_pages(
             output_dir.join(page.url.trim_start_matches('/'))
         };
 
-        if let Some(parent) = file_path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
+        if let Some(parent) = file_path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent) {
                 errors
                     .lock()
                     .unwrap()
                     .push(format!("创建目录失败 {}: {}", parent.display(), e));
                 return;
             }
-        }
         if let Err(e) = std::fs::write(&file_path, html) {
             errors
                 .lock()

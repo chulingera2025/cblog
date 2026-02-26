@@ -264,15 +264,9 @@ impl Default for MediaConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(Default)]
 pub struct PluginConfig {
     #[serde(default)]
     pub enabled: Vec<String>,
 }
 
-impl Default for PluginConfig {
-    fn default() -> Self {
-        Self {
-            enabled: Vec::new(),
-        }
-    }
-}

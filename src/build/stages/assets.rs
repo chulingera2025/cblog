@@ -74,12 +74,11 @@ fn copy_files_with_ext(src_dir: &Path, dest_dir: &Path, ext: &str) -> Result<()>
     for entry in std::fs::read_dir(src_dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_file() && path.extension().is_some_and(|e| e == ext) {
-            if let Some(name) = path.file_name() {
+        if path.is_file() && path.extension().is_some_and(|e| e == ext)
+            && let Some(name) = path.file_name() {
                 std::fs::copy(&path, dest_dir.join(name))?;
                 tracing::debug!("已复制资源: {}", path.display());
             }
-        }
     }
     Ok(())
 }

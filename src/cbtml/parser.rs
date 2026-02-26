@@ -72,12 +72,11 @@ pub fn parse(tokens: Vec<Token>, file_name: &str) -> Result<Node> {
     let mut pos = 0;
 
     // 检查首行是否为 extends 指令
-    if let Some(token) = tokens.first() {
-        if let TokenKind::Extends(parent) = &token.kind {
+    if let Some(token) = tokens.first()
+        && let TokenKind::Extends(parent) = &token.kind {
             extends = Some(parent.clone());
             pos = 1;
         }
-    }
 
     let children = parse_children(&tokens, &mut pos, 0, file_name)?;
 

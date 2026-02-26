@@ -117,7 +117,7 @@ pub fn extract_toc(source: &str) -> Option<String> {
             }
             Event::End(TagEnd::Heading(_)) => {
                 in_heading = false;
-                if current_level >= 2 && current_level <= 4 {
+                if (2..=4).contains(&current_level) {
                     headings.push((current_level, current_text.clone()));
                 }
             }
@@ -171,15 +171,15 @@ pub fn count_words(text: &str) -> u32 {
                 count += 1;
                 in_ascii_word = true;
             }
-        } else if ch >= '\u{4E00}' && ch <= '\u{9FFF}' {
+        } else if ('\u{4E00}'..='\u{9FFF}').contains(&ch) {
             // CJK 统一汉字基本区
             count += 1;
             in_ascii_word = false;
-        } else if ch >= '\u{3400}' && ch <= '\u{4DBF}' {
+        } else if ('\u{3400}'..='\u{4DBF}').contains(&ch) {
             // CJK 统一汉字扩展 A
             count += 1;
             in_ascii_word = false;
-        } else if ch >= '\u{F900}' && ch <= '\u{FAFF}' {
+        } else if ('\u{F900}'..='\u{FAFF}').contains(&ch) {
             // CJK 兼容汉字
             count += 1;
             in_ascii_word = false;

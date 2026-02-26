@@ -413,13 +413,12 @@ pub async fn switch_theme(
                 if trimmed.starts_with('[') {
                     in_theme_section = trimmed == "[theme]";
                 }
-                if in_theme_section && !replaced && trimmed.starts_with("active") {
-                    if let Some(eq_pos) = trimmed.find('=') {
+                if in_theme_section && !replaced && trimmed.starts_with("active")
+                    && let Some(eq_pos) = trimmed.find('=') {
                         let _ = eq_pos;
                         replaced = true;
                         return format!(r#"active = "{}""#, form.theme_name);
                     }
-                }
                 line.to_string()
             })
             .collect::<Vec<_>>()

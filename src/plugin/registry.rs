@@ -86,11 +86,10 @@ pub fn list_available_plugins(project_root: &Path) -> Result<Vec<String>> {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             let toml_path = entry.path().join("plugin.toml");
-            if toml_path.exists() {
-                if let Some(name) = entry.file_name().to_str() {
+            if toml_path.exists()
+                && let Some(name) = entry.file_name().to_str() {
                     names.push(name.to_string());
                 }
-            }
         }
     }
     names.sort();

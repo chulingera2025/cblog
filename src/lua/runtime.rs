@@ -451,7 +451,7 @@ impl PluginEngine {
                     .with_context(|| format!("读取 {} main.lua 失败", name))?;
                 self.lua
                     .load(&code)
-                    .set_name(&format!("plugins/{}/main.lua", name))
+                    .set_name(format!("plugins/{}/main.lua", name))
                     .exec()
                     .map_err(|e| {
                         anyhow::anyhow!("执行插件 {} 的 main.lua 失败: {}", name, e)

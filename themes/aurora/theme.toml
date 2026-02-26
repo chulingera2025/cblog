@@ -53,24 +53,6 @@ min     = 1
 max     = 50
 group   = "布局"
 
-[[config]]
-key     = "show_sidebar"
-type    = "boolean"
-label   = "显示侧边栏"
-default = true
-group   = "布局"
-
-[[config]]
-key        = "sidebar_position"
-type       = "select"
-label      = "侧边栏位置"
-options    = [
-    { value = "right", label = "右侧" },
-    { value = "left",  label = "左侧" },
-]
-default    = "right"
-depends_on = "show_sidebar"
-group      = "布局"
 
 # ── 功能配置 ──────────────────────────────────────────────
 

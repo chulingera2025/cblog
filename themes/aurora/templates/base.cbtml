@@ -7,8 +7,16 @@ html [lang="{{ site.language }}"]
     link [rel="canonical"] [href="{{ site.url }}{{ page.url }}"]
     link [rel="stylesheet"] [href="/assets/main.css"]
     link [rel="alternate"] [type="application/rss+xml"] [title="{{ site.title }} RSS"] [href="/feed.xml"]
-  body
+    if config.custom_head_html
+      raw config.custom_head_html
+    end
+  body [data-theme="{{ config.dark_mode | default('auto') }}"]
     include partials/nav
     main.site-main
       slot content
     include partials/footer
+    if config.custom_css
+      style
+        raw config.custom_css
+    end
+    script [src="/assets/main.js"] [defer]

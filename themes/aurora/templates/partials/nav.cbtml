@@ -1,6 +1,8 @@
 nav.main-nav
   div.nav-inner
     a.site-logo [href="/"] {{ site.title }}
+    button.nav-toggle [aria-label="菜单"] ☰
     div.nav-links
       a [href="/"] 首页
       a [href="/archive/"] 归档
+      button.theme-toggle [aria-label="切换主题"] ◐

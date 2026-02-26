@@ -1,4 +1,8 @@
 footer.site-footer
   div.footer-inner
     p © {{ site.title }}
-    p Powered by cblog
+    if config.footer_text
+      raw config.footer_text
+    else
+      p Powered by cblog
+    end

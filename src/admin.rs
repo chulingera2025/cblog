@@ -6,7 +6,9 @@ use crate::state::AppState;
 
 pub mod auth;
 pub mod build;
+pub mod cleanup;
 pub mod dashboard;
+pub mod health;
 pub mod media;
 pub mod pages;
 pub mod posts;
@@ -16,7 +18,8 @@ pub mod theme;
 pub fn router(state: AppState) -> Router {
     // 无需认证的路由
     let public_routes = Router::new()
-        .route("/admin/login", get(auth::login_page).post(auth::login_submit));
+        .route("/admin/login", get(auth::login_page).post(auth::login_submit))
+        .route("/health", get(health::health_check));
 
     // 需要认证的路由
     let protected_routes = Router::new()

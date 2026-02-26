@@ -122,8 +122,39 @@ pub async fn login_page() -> Html<String> {
 
 pub async fn login_submit(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Response {
+    // 提取客户端 IP：优先 x-forwarded-for，回退到 x-real-ip
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_owned())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_owned())
+        })
+        .unwrap_or_else(|| "unknown".to_owned());
+
+    // 速率限制检查：60 秒窗口内最多 5 次尝试
+    {
+        let mut limiter = state.login_limiter.lock().unwrap_or_else(|e| e.into_inner());
+        let now = std::time::Instant::now();
+        let window = Duration::from_secs(60);
+
+        let attempts = limiter.entry(client_ip.clone()).or_default();
+        attempts.retain(|t| now.duration_since(*t) < window);
+
+        if attempts.len() >= 5 {
+            return (StatusCode::TOO_MANY_REQUESTS, "登录请求过于频繁，请稍后再试").into_response();
+        }
+
+        attempts.push(now);
+    }
+
     let result = try_login(&state, &form).await;
     match result {
         Ok((token, _jti)) => {

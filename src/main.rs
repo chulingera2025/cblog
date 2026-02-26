@@ -4,6 +4,7 @@ use std::path::PathBuf;
 mod admin;
 mod build;
 mod cbtml;
+mod check;
 mod config;
 mod content;
 mod lua;
@@ -52,17 +53,38 @@ enum Commands {
         /// 项目目录名
         name: String,
     },
+
+    /// 检查项目完整性
+    Check {
+        /// 项目根目录（默认当前目录）
+        #[arg(short, long, default_value = ".")]
+        root: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    // 对于需要加载配置的命令，使用配置中的日志级别作为默认值
+    let default_level = match &cli.command {
+        Commands::Build { root, .. }
+        | Commands::Serve { root, .. }
+        | Commands::Check { root, .. } => {
+            config::SiteConfig::load(&root.canonicalize().unwrap_or_else(|_| root.clone()))
+                .ok()
+                .map(|c| c.server.log_level.clone())
+        }
+        _ => None,
+    };
+
+    let default_level = default_level.as_deref().unwrap_or("info");
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level)),
         )
         .init();
-
-    let cli = Cli::parse();
 
     match cli.command {
         Commands::Build { clean, root } => {
@@ -89,6 +111,30 @@ fn main() -> anyhow::Result<()> {
             tracing::info!("初始化项目：{}", name);
             anyhow::bail!("init 命令尚未实现");
         }
+        Commands::Check { root } => {
+            let root = root.canonicalize()?;
+            let result = check::run(&root)?;
+
+            for w in &result.warnings {
+                tracing::warn!("{w}");
+            }
+            for e in &result.errors {
+                tracing::error!("{e}");
+            }
+
+            if result.errors.is_empty() {
+                tracing::info!(
+                    "检查通过（{} 个警告）",
+                    result.warnings.len()
+                );
+            } else {
+                anyhow::bail!(
+                    "检查未通过：{} 个错误，{} 个警告",
+                    result.errors.len(),
+                    result.warnings.len()
+                );
+            }
+        }
     }
 
     Ok(())
@@ -104,6 +150,9 @@ async fn run_server(
 
     // 首次启动时创建默认管理员
     ensure_default_admin(&app_state).await?;
+
+    // 启动后台定时清理过期 token
+    admin::cleanup::spawn_token_cleanup(app_state.clone());
 
     let app = admin::router(app_state);
 

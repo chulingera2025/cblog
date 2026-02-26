@@ -123,6 +123,56 @@ impl PluginEngine {
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        // cblog.strip_html(html) — 去除 HTML 标签
+        cblog
+            .set(
+                "strip_html",
+                lua.create_function(|_, html: String| {
+                    let mut result = String::with_capacity(html.len());
+                    let mut inside_tag = false;
+                    for ch in html.chars() {
+                        match ch {
+                            '<' => inside_tag = true,
+                            '>' => inside_tag = false,
+                            _ if !inside_tag => result.push(ch),
+                            _ => {}
+                        }
+                    }
+                    Ok(result)
+                })
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // cblog.version_lt(v1, v2) — 语义版本比较 v1 < v2
+        cblog
+            .set(
+                "version_lt",
+                lua.create_function(|_, (v1, v2): (String, String)| {
+                    let parse = |v: &str| -> Vec<u64> {
+                        v.split('.')
+                            .map(|s| s.parse::<u64>().unwrap_or(0))
+                            .collect()
+                    };
+                    let a = parse(&v1);
+                    let b = parse(&v2);
+                    let len = a.len().max(b.len());
+                    for i in 0..len {
+                        let sa = a.get(i).copied().unwrap_or(0);
+                        let sb = b.get(i).copied().unwrap_or(0);
+                        if sa < sb {
+                            return Ok(true);
+                        }
+                        if sa > sb {
+                            return Ok(false);
+                        }
+                    }
+                    Ok(false)
+                })
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         // cblog.log.*
         let log = lua
             .create_table()
@@ -239,6 +289,70 @@ impl PluginEngine {
                     let full = sandbox::resolve_path(&root_c, &path)?;
                     std::fs::create_dir_all(&full)
                         .map_err(|e| mlua::Error::external(format!("创建目录失败: {e}")))
+                })
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let root_c = root.clone();
+        files
+            .set(
+                "list",
+                lua.create_function(move |lua, path: String| {
+                    let full = sandbox::resolve_path(&root_c, &path)?;
+                    let entries = std::fs::read_dir(&full)
+                        .map_err(|e| mlua::Error::external(format!("读取目录失败: {e}")))?;
+                    let tbl = lua.create_table()?;
+                    let mut idx = 1;
+                    for entry in entries {
+                        let entry = entry.map_err(|e| {
+                            mlua::Error::external(format!("遍历目录条目失败: {e}"))
+                        })?;
+                        if let Some(name) = entry.file_name().to_str() {
+                            tbl.set(idx, name.to_string())?;
+                            idx += 1;
+                        }
+                    }
+                    Ok(tbl)
+                })
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let root_c = root.clone();
+        files
+            .set(
+                "copy",
+                lua.create_function(move |_, (src, dst): (String, String)| {
+                    let src_full = sandbox::resolve_path(&root_c, &src)?;
+                    let dst_full = sandbox::resolve_path(&root_c, &dst)?;
+                    if let Some(parent) = dst_full.parent() {
+                        std::fs::create_dir_all(parent)
+                            .map_err(|e| mlua::Error::external(format!("创建目录失败: {e}")))?;
+                    }
+                    std::fs::copy(&src_full, &dst_full)
+                        .map_err(|e| mlua::Error::external(format!("复制文件失败: {e}")))?;
+                    Ok(())
+                })
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let root_c = root.clone();
+        files
+            .set(
+                "append",
+                lua.create_function(move |_, (path, content): (String, String)| {
+                    let full = sandbox::resolve_path(&root_c, &path)?;
+                    use std::io::Write;
+                    let mut file = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&full)
+                        .map_err(|e| mlua::Error::external(format!("打开文件失败: {e}")))?;
+                    file.write_all(content.as_bytes())
+                        .map_err(|e| mlua::Error::external(format!("追加写入失败: {e}")))?;
+                    Ok(())
                 })
                 .map_err(|e| anyhow::anyhow!("{e}"))?,
             )

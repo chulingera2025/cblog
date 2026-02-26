@@ -1,6 +1,7 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
-use axum::response::{Html, Redirect};
+use axum::http::StatusCode;
+use axum::response::Html;
 use sqlx::Row;
 use std::sync::Arc;
 
@@ -67,15 +68,13 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
             <h1 class="page-title">构建管理</h1>
             <div class="actions">
                 <div id="build-status"></div>
-                <form method="POST" action="/admin/build">
-                    <button type="submit" class="btn btn-success">触发构建</button>
-                </form>
+                <button type="button" id="trigger-build-btn" class="btn btn-success">触发构建</button>
             </div>
         </div>
         <div class="table-wrapper">
             <table>
                 <thead><tr><th>开始时间</th><th>触发方式</th><th>状态</th><th>耗时</th><th>完成时间</th><th>错误</th></tr></thead>
-                <tbody>{table_rows}</tbody>
+                <tbody id="build-tbody">{table_rows}</tbody>
             </table>
         </div>"#,
         table_rows = table_rows,
@@ -85,21 +84,68 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
         (function() {
             var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             var ws = new WebSocket(protocol + '//' + location.host + '/admin/build/ws');
-            var el = document.getElementById('build-status');
+            var statusEl = document.getElementById('build-status');
+            var btn = document.getElementById('trigger-build-btn');
+            var tbody = document.getElementById('build-tbody');
+
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+            function fmtTime(d) {
+                return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+            }
+            function escHtml(s) {
+                var d = document.createElement('div');
+                d.textContent = s;
+                return d.innerHTML;
+            }
+
+            btn.addEventListener('click', function() {
+                btn.disabled = true;
+                btn.textContent = '构建中...';
+                fetch('/admin/build', { method: 'POST' }).catch(function() {
+                    btn.disabled = false;
+                    btn.textContent = '触发构建';
+                    showToast('触发构建请求失败', 'error');
+                });
+            });
+
             ws.onmessage = function(e) {
                 var event = JSON.parse(e.data);
                 if (event.type === 'Started') {
-                    el.innerHTML = '<span class="badge badge-warning">构建中...</span>';
+                    statusEl.innerHTML = '<span class="badge badge-warning">构建中...</span>';
+                    btn.disabled = true;
+                    btn.textContent = '构建中...';
                 } else if (event.type === 'Finished') {
-                    el.innerHTML = '<span class="badge badge-success">完成: '
-                        + event.total_pages + '页, '
-                        + event.rebuilt + '重建, '
-                        + event.cached + '缓存, '
+                    statusEl.innerHTML = '<span class="badge badge-success">完成: '
+                        + event.total_pages + ' 页, '
+                        + event.rebuilt + ' 重建, '
+                        + event.cached + ' 缓存, '
                         + event.total_ms + 'ms</span>';
-                    setTimeout(function() { location.reload(); }, 1500);
+                    btn.disabled = false;
+                    btn.textContent = '触发构建';
+                    var now = fmtTime(new Date());
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + now + '</td>'
+                        + '<td>manual</td>'
+                        + '<td><span class="badge badge-success">成功</span></td>'
+                        + '<td>' + event.total_ms + 'ms</td>'
+                        + '<td>' + now + '</td>'
+                        + '<td></td>';
+                    tbody.insertBefore(tr, tbody.firstChild);
                 } else if (event.type === 'Failed') {
-                    el.innerHTML = '<span class="badge badge-danger">失败: ' + event.error + '</span>';
-                    setTimeout(function() { location.reload(); }, 1500);
+                    statusEl.innerHTML = '<span class="badge badge-danger">失败: ' + escHtml(event.error) + '</span>';
+                    btn.disabled = false;
+                    btn.textContent = '触发构建';
+                    var now = fmtTime(new Date());
+                    var errMsg = (event.error || '').substring(0, 80);
+                    var tr = document.createElement('tr');
+                    tr.innerHTML = '<td>' + now + '</td>'
+                        + '<td>manual</td>'
+                        + '<td><span class="badge badge-danger">失败</span></td>'
+                        + '<td>-</td>'
+                        + '<td>' + now + '</td>'
+                        + '<td><span class="badge badge-danger">' + escHtml(errMsg) + '</span></td>';
+                    tbody.insertBefore(tr, tbody.firstChild);
                 }
             };
         })();
@@ -113,18 +159,15 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     Html(admin_page_with_script("构建管理", "/admin/build", &body, script, &ctx))
 }
 
-pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
-    let id = ulid::Ulid::new().to_string();
-    let started_at = chrono::Utc::now().to_rfc3339();
-
+/// 异步触发构建，立即返回 202，构建在后台执行
+pub async fn trigger_build(State(state): State<AppState>) -> StatusCode {
     let _ = state.build_events.send(BuildEvent::Started {
         trigger: "manual".to_string(),
     });
 
-    let project_root = state.project_root.clone();
     let config = Arc::clone(&state.config);
 
-    // 预取插件配置
+    // 预取插件配置（需要 async）
     let mut plugin_configs = std::collections::HashMap::new();
     for name in &config.plugins.enabled {
         if let Ok(cfg) = crate::plugin::store::PluginStore::get_all(&state.db, name).await
@@ -148,60 +191,71 @@ pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
             })
             .unwrap_or_default();
 
-    let result = tokio::task::spawn_blocking(move || {
-        crate::build::run(&project_root, &config, false, plugin_configs, theme_saved_config)
-    })
-    .await;
+    // 后台执行构建，不阻塞响应
+    let project_root = state.project_root.clone();
+    let db = state.db.clone();
+    let build_events = state.build_events.clone();
 
-    let finished_at = chrono::Utc::now().to_rfc3339();
-    let start_time = chrono::DateTime::parse_from_rfc3339(&started_at).ok();
-    let duration_ms = start_time.map(|s| {
-        (chrono::Utc::now() - s.with_timezone(&chrono::Utc)).num_milliseconds()
+    tokio::task::spawn(async move {
+        let started_at = chrono::Utc::now().to_rfc3339();
+
+        let build_root = project_root.clone();
+        let build_config = Arc::clone(&config);
+        let result = tokio::task::spawn_blocking(move || {
+            crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config)
+        })
+        .await;
+
+        let finished_at = chrono::Utc::now().to_rfc3339();
+        let start_time = chrono::DateTime::parse_from_rfc3339(&started_at).ok();
+        let duration_ms = start_time.map(|s| {
+            (chrono::Utc::now() - s.with_timezone(&chrono::Utc)).num_milliseconds()
+        });
+
+        let (status, error, stats) = match &result {
+            Ok(Ok(stats)) => ("success", None, Some(stats.clone())),
+            Ok(Err(e)) => ("failed", Some(format!("{e:#}")), None),
+            Err(e) => ("failed", Some(format!("任务执行异常: {e}")), None),
+        };
+
+        match stats {
+            Some(ref s) => {
+                let _ = build_events.send(BuildEvent::Finished {
+                    total_ms: duration_ms.unwrap_or(0) as u64,
+                    total_pages: s.total_pages,
+                    rebuilt: s.rebuilt,
+                    cached: s.cached,
+                });
+            }
+            None => {
+                let _ = build_events.send(BuildEvent::Failed {
+                    error: error.clone().unwrap_or_default(),
+                });
+            }
+        }
+
+        let id = ulid::Ulid::new().to_string();
+        let total_pages = stats.as_ref().map(|s| s.total_pages as i64);
+        let rebuilt = stats.as_ref().map(|s| s.rebuilt as i64);
+        let cached = stats.as_ref().map(|s| s.cached as i64);
+
+        let _ = sqlx::query(
+            "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at, total_pages, rebuilt, cached) VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(status)
+        .bind(duration_ms)
+        .bind(error.as_deref())
+        .bind(&started_at)
+        .bind(&finished_at)
+        .bind(total_pages)
+        .bind(rebuilt)
+        .bind(cached)
+        .execute(&db)
+        .await;
     });
 
-    let (status, error, stats) = match &result {
-        Ok(Ok(stats)) => ("success", None, Some(stats.clone())),
-        Ok(Err(e)) => ("failed", Some(format!("{e:#}")), None),
-        Err(e) => ("failed", Some(format!("任务执行异常: {e}")), None),
-    };
-
-    // 广播构建结果事件
-    match stats {
-        Some(ref s) => {
-            let _ = state.build_events.send(BuildEvent::Finished {
-                total_ms: duration_ms.unwrap_or(0) as u64,
-                total_pages: s.total_pages,
-                rebuilt: s.rebuilt,
-                cached: s.cached,
-            });
-        }
-        None => {
-            let _ = state.build_events.send(BuildEvent::Failed {
-                error: error.clone().unwrap_or_default(),
-            });
-        }
-    }
-
-    let total_pages = stats.as_ref().map(|s| s.total_pages as i64);
-    let rebuilt = stats.as_ref().map(|s| s.rebuilt as i64);
-    let cached = stats.as_ref().map(|s| s.cached as i64);
-
-    let _ = sqlx::query(
-        "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at, total_pages, rebuilt, cached) VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(status)
-    .bind(duration_ms)
-    .bind(error.as_deref())
-    .bind(&started_at)
-    .bind(&finished_at)
-    .bind(total_pages)
-    .bind(rebuilt)
-    .bind(cached)
-    .execute(&state.db)
-    .await;
-
-    Redirect::to("/admin/build")
+    StatusCode::ACCEPTED
 }
 
 pub async fn build_status_ws(

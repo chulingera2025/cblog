@@ -7,9 +7,15 @@ pub mod stages;
 use crate::config::SiteConfig;
 use anyhow::Result;
 use incremental::BuildStats;
+use std::collections::HashMap;
 use std::path::Path;
 
-pub fn run(project_root: &Path, config: &SiteConfig, clean: bool) -> Result<BuildStats> {
+pub fn run(
+    project_root: &Path,
+    config: &SiteConfig,
+    clean: bool,
+    plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
+) -> Result<BuildStats> {
     let output_dir = project_root.join(&config.build.output_dir);
 
     if clean {
@@ -26,7 +32,7 @@ pub fn run(project_root: &Path, config: &SiteConfig, clean: bool) -> Result<Buil
 
     std::fs::create_dir_all(&output_dir)?;
 
-    let stats = pipeline::execute(project_root, config)?;
+    let stats = pipeline::execute(project_root, config, plugin_configs)?;
 
     Ok(stats)
 }

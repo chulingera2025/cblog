@@ -3,6 +3,7 @@ use crate::build::incremental::{BuildStats, HashCache};
 use crate::build::stages;
 use crate::config::SiteConfig;
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::Path;
 
 fn serialize_posts(posts: &[crate::content::Post]) -> serde_json::Value {
@@ -31,7 +32,11 @@ fn serialize_posts(posts: &[crate::content::Post]) -> serde_json::Value {
 }
 
 /// 执行完整构建管道
-pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<BuildStats> {
+pub fn execute(
+    project_root: &Path,
+    config: &SiteConfig,
+    plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
+) -> Result<BuildStats> {
     tracing::info!("开始构建...");
     let start = std::time::Instant::now();
 
@@ -52,7 +57,7 @@ pub fn execute(project_root: &Path, config: &SiteConfig) -> Result<BuildStats> {
             project_root,
             &config.plugins.enabled,
         )?;
-        let mut eng = crate::lua::runtime::PluginEngine::new(project_root, config)?;
+        let mut eng = crate::lua::runtime::PluginEngine::new(project_root, config, plugin_configs)?;
         eng.load_plugins(&ordered)?;
         Some(eng)
     } else {

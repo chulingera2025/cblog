@@ -94,7 +94,11 @@ fn main() -> anyhow::Result<()> {
                 tracing::info!("已自动初始化项目");
             }
             let site_config = config::SiteConfig::load(&root)?;
-            let _stats = build::run(&root, &site_config, clean)?;
+            let plugin_configs = plugin::store::load_all_configs_sync(
+                &root.join("cblog.db"),
+                &site_config.plugins.enabled,
+            );
+            let _stats = build::run(&root, &site_config, clean, plugin_configs)?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;

@@ -160,8 +160,18 @@ pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
     let project_root = state.project_root.clone();
     let config = Arc::clone(&state.config);
 
+    // 预取插件配置
+    let mut plugin_configs = std::collections::HashMap::new();
+    for name in &config.plugins.enabled {
+        if let Ok(cfg) = crate::plugin::store::PluginStore::get_all(&state.db, name).await
+            && !cfg.is_empty()
+        {
+            plugin_configs.insert(name.clone(), cfg);
+        }
+    }
+
     let result = tokio::task::spawn_blocking(move || {
-        crate::build::run(&project_root, &config, false)
+        crate::build::run(&project_root, &config, false, plugin_configs)
     })
     .await;
 

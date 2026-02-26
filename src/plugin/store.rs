@@ -1,6 +1,7 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
+use std::path::Path;
 
 /// 插件 KV 存储操作（基于 plugin_store 表）
 pub struct PluginStore;
@@ -90,4 +91,35 @@ impl PluginStore {
         }
         Ok(map)
     }
+}
+
+/// 同步加载所有启用插件的配置（用于 cblog build 等无 async runtime 的场景）
+pub fn load_all_configs_sync(
+    db_path: &Path,
+    plugins: &[String],
+) -> HashMap<String, HashMap<String, serde_json::Value>> {
+    if !db_path.exists() || plugins.is_empty() {
+        return HashMap::new();
+    }
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return HashMap::new();
+    };
+    rt.block_on(async {
+        let db_url = format!("sqlite:{}?mode=ro", db_path.display());
+        let Ok(pool) = sqlx::SqlitePool::connect(&db_url).await else {
+            return HashMap::new();
+        };
+        let mut result = HashMap::new();
+        for name in plugins {
+            if let Ok(configs) = PluginStore::get_all(&pool, name).await
+                && !configs.is_empty()
+            {
+                result.insert(name.clone(), configs);
+            }
+        }
+        result
+    })
 }

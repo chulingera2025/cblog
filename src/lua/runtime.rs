@@ -14,10 +14,15 @@ pub struct PluginEngine {
     pub hooks: HookRegistry,
     pub project_root: PathBuf,
     pub plugins: Vec<PluginInfo>,
+    pub plugin_configs: std::collections::HashMap<String, std::collections::HashMap<String, serde_json::Value>>,
 }
 
 impl PluginEngine {
-    pub fn new(project_root: &Path, config: &SiteConfig) -> Result<Self> {
+    pub fn new(
+        project_root: &Path,
+        config: &SiteConfig,
+        plugin_configs: std::collections::HashMap<String, std::collections::HashMap<String, serde_json::Value>>,
+    ) -> Result<Self> {
         let lua = Lua::new_with(StdLib::ALL, LuaOptions::default())
             .map_err(|e| anyhow::anyhow!("Lua VM 初始化失败: {e}"))?;
 
@@ -30,6 +35,7 @@ impl PluginEngine {
             hooks,
             project_root: project_root.to_path_buf(),
             plugins: Vec::new(),
+            plugin_configs,
         };
 
         engine.register_core_api(config)?;
@@ -463,7 +469,7 @@ impl PluginEngine {
     }
 
     /// 为插件创建 plugin.filter/action API，将注册暂存到 Lua table
-    fn setup_plugin_api(&self, _plugin_name: &str) -> Result<()> {
+    fn setup_plugin_api(&self, plugin_name: &str) -> Result<()> {
         let lua = &self.lua;
         let globals = lua.globals();
 
@@ -527,13 +533,24 @@ impl PluginEngine {
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-        // plugin.config()
+        // plugin.config() — 返回预加载的插件配置
+        let config_value = if let Some(cfg) = self.plugin_configs.get(plugin_name) {
+            lua.to_value(cfg).unwrap_or(mlua::Value::Nil)
+        } else {
+            mlua::Value::Nil
+        };
+        let config_key = lua.create_registry_value(config_value)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         plugin_table
             .set(
                 "config",
-                lua.create_function(|lua, ()| {
-                    // TODO!!! 从 plugin_store 读取插件配置
-                    lua.create_table()
+                lua.create_function(move |lua, ()| {
+                    let val: mlua::Value = lua.registry_value(&config_key)?;
+                    match val {
+                        mlua::Value::Nil => lua.create_table().map(mlua::Value::Table),
+                        other => Ok(other),
+                    }
                 })
                 .map_err(|e| anyhow::anyhow!("{e}"))?,
             )

@@ -89,7 +89,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
             title = html_escape(&p.title),
             badge_class = badge_class,
             status_label = status_label,
-            updated_at = &p.updated_at[..10.min(p.updated_at.len())],
+            updated_at = crate::admin::layout::format_datetime(&p.updated_at),
         ));
     }
 

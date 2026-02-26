@@ -4,7 +4,7 @@ use axum::response::{Html, Redirect};
 use sqlx::Row;
 use std::sync::Arc;
 
-use crate::admin::layout::{admin_page_with_script, html_escape, PageContext};
+use crate::admin::layout::{admin_page_with_script, format_datetime, html_escape, PageContext};
 use crate::build::events::BuildEvent;
 use crate::state::AppState;
 
@@ -53,11 +53,11 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
                 <td>{finished}</td>
                 <td>{error_html}</td>
             </tr>"#,
-            started_at = &row.started_at[..19.min(row.started_at.len())],
+            started_at = format_datetime(&row.started_at),
             trigger = html_escape(&row.trigger),
             badge = badge,
             duration = duration,
-            finished = &finished[..19.min(finished.len())],
+            finished = if finished == "-" { "-".to_string() } else { format_datetime(finished) },
             error_html = error_html,
         ));
     }

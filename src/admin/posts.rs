@@ -137,8 +137,8 @@ pub async fn list_posts(
             title = html_escape(title),
             badge_class = badge_class,
             status_label = status_label,
-            created_at = &created_at[..10.min(created_at.len())],
-            updated_at = &updated_at[..10.min(updated_at.len())],
+            created_at = crate::admin::layout::format_datetime(created_at),
+            updated_at = crate::admin::layout::format_datetime(updated_at),
         ));
     }
 

@@ -108,7 +108,7 @@ pub async fn list_pages(
             badge_class = badge_class,
             status_label = status_label,
             tpl = html_escape(tpl),
-            updated_at = &updated_at[..10.min(updated_at.len())],
+            updated_at = crate::admin::layout::format_datetime(updated_at),
         ));
     }
 

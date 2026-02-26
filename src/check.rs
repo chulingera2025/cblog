@@ -14,8 +14,6 @@ pub fn run(project_root: &Path) -> Result<CheckResult> {
     check_config(project_root, &mut errors, &mut warnings);
     check_theme(project_root, &mut errors, &mut warnings);
     check_plugins(project_root, &mut errors, &mut warnings);
-    check_content(project_root, &mut errors, &mut warnings);
-
     Ok(CheckResult { errors, warnings })
 }
 
@@ -97,14 +95,3 @@ fn check_plugins(root: &Path, errors: &mut Vec<String>, _warnings: &mut Vec<Stri
     }
 }
 
-fn check_content(root: &Path, _errors: &mut Vec<String>, warnings: &mut Vec<String>) {
-    let posts_dir = root.join("content").join("posts");
-    if !posts_dir.exists() {
-        warnings.push("content/posts/ 目录不存在".to_string());
-    }
-
-    let pages_dir = root.join("content").join("pages");
-    if !pages_dir.exists() {
-        warnings.push("content/pages/ 目录不存在".to_string());
-    }
-}

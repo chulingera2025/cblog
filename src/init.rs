@@ -53,8 +53,6 @@ pub fn ensure_initialized(root: &Path) -> Result<bool> {
 
     // 创建目录结构
     let dirs = [
-        "content/posts",
-        "content/pages",
         "themes/aurora/templates/partials",
         "themes/aurora/assets/scss",
         "themes/aurora/assets/js",

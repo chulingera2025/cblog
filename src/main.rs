@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Build { clean, root } => {
             let root = root.canonicalize()?;
             let site_config = config::SiteConfig::load(&root)?;
-            build::run(&root, &site_config, clean)?;
+            let _stats = build::run(&root, &site_config, clean)?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;

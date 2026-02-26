@@ -46,6 +46,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/media/{id}/delete", post(media::delete_media))
         .route("/admin/api/media", get(media::api_media_list))
         // 构建管理
+        .route("/admin/build/ws", get(build::build_status_ws))
         .route("/admin/build", get(build::build_history).post(build::trigger_build))
         // 插件管理
         .route("/admin/plugins", get(plugins::list_plugins))

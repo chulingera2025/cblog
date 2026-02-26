@@ -1,7 +1,9 @@
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::{Html, Redirect};
 use std::sync::Arc;
 
+use crate::build::events::BuildEvent;
 use crate::state::AppState;
 
 fn admin_nav() -> String {
@@ -103,15 +105,42 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
         <div class="container">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
                 <h1>构建历史</h1>
-                <form method="POST" action="/admin/build">
-                    <button type="submit" class="btn btn-success">触发构建</button>
-                </form>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <div id="build-status"></div>
+                    <form method="POST" action="/admin/build">
+                        <button type="submit" class="btn btn-success">触发构建</button>
+                    </form>
+                </div>
             </div>
             <table>
                 <thead><tr><th>开始时间</th><th>触发方式</th><th>状态</th><th>耗时</th><th>完成时间</th><th>错误</th></tr></thead>
                 <tbody>{table_rows}</tbody>
             </table>
-        </div></body></html>"#,
+        </div>
+        <script>
+        (function() {{
+            var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            var ws = new WebSocket(protocol + '//' + location.host + '/admin/build/ws');
+            var el = document.getElementById('build-status');
+            ws.onmessage = function(e) {{
+                var event = JSON.parse(e.data);
+                if (event.type === 'Started') {{
+                    el.innerHTML = '<span class="status-badge status-running">构建中...</span>';
+                }} else if (event.type === 'Finished') {{
+                    el.innerHTML = '<span class="status-badge status-success">完成: '
+                        + event.total_pages + '页, '
+                        + event.rebuilt + '重建, '
+                        + event.cached + '缓存, '
+                        + event.total_ms + 'ms</span>';
+                    setTimeout(function() {{ location.reload(); }}, 1500);
+                }} else if (event.type === 'Failed') {{
+                    el.innerHTML = '<span class="status-badge status-failed">失败: ' + event.error + '</span>';
+                    setTimeout(function() {{ location.reload(); }}, 1500);
+                }}
+            }};
+        }})();
+        </script>
+        </body></html>"#,
         style = page_style(),
         nav = admin_nav(),
         table_rows = table_rows,
@@ -123,6 +152,10 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
 pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
     let id = ulid::Ulid::new().to_string();
     let started_at = chrono::Utc::now().to_rfc3339();
+
+    let _ = state.build_events.send(BuildEvent::Started {
+        trigger: "manual".to_string(),
+    });
 
     let project_root = state.project_root.clone();
     let config = Arc::clone(&state.config);
@@ -138,14 +171,35 @@ pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
         (chrono::Utc::now() - s.with_timezone(&chrono::Utc)).num_milliseconds()
     });
 
-    let (status, error) = match result {
-        Ok(Ok(())) => ("success", None),
-        Ok(Err(e)) => ("failed", Some(format!("{e:#}"))),
-        Err(e) => ("failed", Some(format!("任务执行异常: {e}"))),
+    let (status, error, stats) = match &result {
+        Ok(Ok(stats)) => ("success", None, Some(stats.clone())),
+        Ok(Err(e)) => ("failed", Some(format!("{e:#}")), None),
+        Err(e) => ("failed", Some(format!("任务执行异常: {e}")), None),
     };
 
+    // 广播构建结果事件
+    match stats {
+        Some(ref s) => {
+            let _ = state.build_events.send(BuildEvent::Finished {
+                total_ms: duration_ms.unwrap_or(0) as u64,
+                total_pages: s.total_pages,
+                rebuilt: s.rebuilt,
+                cached: s.cached,
+            });
+        }
+        None => {
+            let _ = state.build_events.send(BuildEvent::Failed {
+                error: error.clone().unwrap_or_default(),
+            });
+        }
+    }
+
+    let total_pages = stats.as_ref().map(|s| s.total_pages as i64);
+    let rebuilt = stats.as_ref().map(|s| s.rebuilt as i64);
+    let cached = stats.as_ref().map(|s| s.cached as i64);
+
     let _ = sqlx::query(
-        "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at) VALUES (?, 'manual', ?, ?, ?, ?, ?)",
+        "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at, total_pages, rebuilt, cached) VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(status)
@@ -153,8 +207,28 @@ pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
     .bind(error.as_deref())
     .bind(&started_at)
     .bind(&finished_at)
+    .bind(total_pages)
+    .bind(rebuilt)
+    .bind(cached)
     .execute(&state.db)
     .await;
 
     Redirect::to("/admin/build")
+}
+
+pub async fn build_status_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl axum::response::IntoResponse {
+    ws.on_upgrade(move |socket| handle_ws(socket, state))
+}
+
+async fn handle_ws(mut socket: WebSocket, state: AppState) {
+    let mut rx = state.build_events.subscribe();
+    while let Ok(event) = rx.recv().await {
+        let json = serde_json::to_string(&event).unwrap_or_default();
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            break;
+        }
+    }
 }

@@ -6,7 +6,7 @@ description = "Rust + Lua 博客引擎：后台动态，前台全静态 SSG"
 
 [dependencies]
 # Web 框架 & 异步运行时
-axum = { version = "0.8", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart", "ws"] }
 tokio = { version = "1", features = ["full"] }
 
 # 序列化

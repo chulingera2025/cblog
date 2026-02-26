@@ -62,7 +62,7 @@ pub async fn list_media(
         };
 
         let size_display = upload::format_size(item.size_bytes as usize);
-        let date = &item.uploaded_at[..10.min(item.uploaded_at.len())];
+        let date = crate::admin::layout::format_datetime(&item.uploaded_at);
 
         cards.push_str(&format!(
             r#"<div class="media-card">

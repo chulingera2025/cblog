@@ -15,6 +15,12 @@ pub struct PageContext {
     pub plugin_sidebar_items: Vec<PluginSidebarEntry>,
 }
 
+/// RFC3339 时间格式化为 "YYYY-MM-DD HH:MM:SS"
+pub fn format_datetime(s: &str) -> String {
+    let s = &s[..19.min(s.len())];
+    s.replace('T', " ")
+}
+
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

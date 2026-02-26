@@ -67,9 +67,16 @@ pub fn router(state: AppState) -> Router {
         state.project_root.join(&state.config.media.upload_dir),
     );
 
+    // 静态站点服务（build 输出目录作为 fallback）
+    let static_site = tower_http::services::ServeDir::new(
+        state.project_root.join(&state.config.build.output_dir),
+    )
+    .append_index_html_on_directories(true);
+
     Router::new()
         .merge(public_routes)
         .merge(protected_routes)
         .nest_service("/media", media_service)
+        .fallback_service(static_site)
         .with_state(state)
 }

@@ -9,6 +9,7 @@ use crate::state::AppState;
 
 pub mod auth;
 pub mod build;
+pub mod categories;
 pub mod cleanup;
 pub mod dashboard;
 pub mod health;
@@ -20,6 +21,7 @@ pub mod plugins;
 pub mod posts;
 pub mod profile;
 pub mod settings;
+pub mod tags;
 pub mod theme;
 
 pub fn router(state: AppState) -> Router {
@@ -62,6 +64,18 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/media/upload", get(media::upload_page).post(media::upload_media))
         .route("/admin/media/{id}/delete", post(media::delete_media))
         .route("/admin/api/media", get(media::api_media_list))
+        // 分类管理
+        .route("/admin/categories", get(categories::list_categories).post(categories::create_category))
+        .route("/admin/categories/new", get(categories::new_category_page))
+        .route("/admin/categories/{id}", get(categories::edit_category_page).post(categories::update_category))
+        .route("/admin/categories/{id}/delete", post(categories::delete_category))
+        .route("/admin/api/categories", get(categories::api_list_categories))
+        // 标签管理
+        .route("/admin/tags", get(tags::list_tags).post(tags::create_tag))
+        .route("/admin/tags/new", get(tags::new_tag_page))
+        .route("/admin/tags/{id}", get(tags::edit_tag_page).post(tags::update_tag))
+        .route("/admin/tags/{id}/delete", post(tags::delete_tag))
+        .route("/admin/api/tags", get(tags::api_list_tags))
         // 构建管理
         .route("/admin/build/ws", get(build::build_status_ws))
         .route("/admin/build", get(build::build_history).post(build::trigger_build))

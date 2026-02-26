@@ -3,7 +3,7 @@ use axum::response::{Html, Redirect};
 use serde::Deserialize;
 use sqlx::Row;
 
-use crate::admin::layout::{admin_page, html_escape};
+use crate::admin::layout::{admin_page, html_escape, svg_icon, PageContext};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -37,15 +37,15 @@ fn generate_slug(title: &str) -> String {
         .join("-")
 }
 
-const EXTRA_STYLE: &str = r#"
-    .filter-bar { margin-bottom:16px; display:flex; gap:12px; align-items:center; }
-    textarea { min-height:300px; font-family:monospace; }
-"#;
-
 pub async fn list_posts(
     State(state): State<AppState>,
     Query(params): Query<ListQuery>,
 ) -> Html<String> {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i32 = 20;
     let offset = (page as i32 - 1) * per_page;
@@ -115,26 +115,21 @@ pub async fn list_posts(
         let created_at: &str = row.get("created_at");
         let updated_at: &str = row.get("updated_at");
 
-        let badge_class = match status {
-            "published" => "status-published",
-            "draft" => "status-draft",
-            _ => "status-archived",
-        };
-        let status_label = match status {
-            "published" => "已发布",
-            "draft" => "草稿",
-            other => other,
+        let (badge_class, status_label) = match status {
+            "published" => ("badge-success", "已发布"),
+            "draft" => ("badge-warning", "草稿"),
+            other => ("badge-neutral", other),
         };
         table_rows.push_str(&format!(
             r#"<tr>
-                <td><a href="/admin/posts/{id}/edit">{title}</a></td>
-                <td><span class="status-badge {badge_class}">{status_label}</span></td>
+                <td><a href="/admin/posts/{id}">{title}</a></td>
+                <td><span class="badge {badge_class}">{status_label}</span></td>
                 <td>{created_at}</td>
                 <td>{updated_at}</td>
                 <td class="actions">
-                    <a href="/admin/posts/{id}/edit" class="btn btn-secondary" style="padding:2px 8px;font-size:12px;">编辑</a>
-                    <form method="POST" action="/admin/posts/{id}/delete" style="display:inline;" onsubmit="return confirm('确定删除？')">
-                        <button type="submit" class="btn btn-danger" style="padding:2px 8px;font-size:12px;">删除</button>
+                    <a href="/admin/posts/{id}" class="btn btn-secondary btn-sm">编辑</a>
+                    <form method="POST" action="/admin/posts/{id}/delete" style="display:inline;" onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;">
+                        <button type="submit" class="btn btn-danger btn-sm">删除</button>
                     </form>
                 </td>
             </tr>"#,
@@ -148,30 +143,31 @@ pub async fn list_posts(
     }
 
     let body = format!(
-        r#"<div class="container">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h1>文章管理</h1>
-                <a href="/admin/posts/new" class="btn btn-primary">新建文章</a>
-            </div>
-            <div class="filter-bar">
-                <form method="GET" action="/admin/posts" style="display:flex;gap:8px;align-items:center;">
-                    <select name="status" style="width:auto;margin-bottom:0;">
-                        <option value="">全部状态</option>
-                        <option value="draft" {sel_draft}>草稿</option>
-                        <option value="published" {sel_pub}>已发布</option>
-                    </select>
-                    <input type="text" name="search" placeholder="搜索标题..." value="{search_val}" style="width:200px;margin-bottom:0;">
-                    <button type="submit" class="btn btn-primary" style="padding:6px 12px;">筛选</button>
-                </form>
-            </div>
-            <table>
-                <thead><tr><th>标题</th><th>状态</th><th>创建时间</th><th>更新时间</th><th>操作</th></tr></thead>
-                <tbody>{table_rows}</tbody>
-            </table>
-            <div style="margin-top:16px;display:flex;gap:8px;">
-                {pagination}
-            </div>
-        </div>"#,
+        r#"<div class="page-header">
+    <h1 class="page-title">文章管理</h1>
+    <a href="/admin/posts/new" class="btn btn-primary">{icon_plus} 新建文章</a>
+</div>
+<div class="filter-bar">
+    <form method="GET" action="/admin/posts" class="filter-bar">
+        <select name="status" class="form-select">
+            <option value="">全部状态</option>
+            <option value="draft" {sel_draft}>草稿</option>
+            <option value="published" {sel_pub}>已发布</option>
+        </select>
+        <input type="text" name="search" placeholder="搜索标题..." value="{search_val}" class="form-input">
+        <button type="submit" class="btn btn-primary btn-sm">筛选</button>
+    </form>
+</div>
+<div class="table-wrapper">
+    <table>
+        <thead><tr><th>标题</th><th>状态</th><th>创建时间</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody>{table_rows}</tbody>
+    </table>
+</div>
+<div class="pagination">
+    {pagination}
+</div>"#,
+        icon_plus = svg_icon("plus"),
         table_rows = table_rows,
         sel_draft = if params.status.as_deref() == Some("draft") { "selected" } else { "" },
         sel_pub = if params.status.as_deref() == Some("published") { "selected" } else { "" },
@@ -180,13 +176,13 @@ pub async fn list_posts(
             let mut p = String::new();
             if page > 1 {
                 p.push_str(&format!(
-                    r#"<a href="/admin/posts?page={}" class="btn btn-secondary">上一页</a>"#,
+                    r#"<a href="/admin/posts?page={}" class="btn btn-secondary btn-sm">上一页</a>"#,
                     page - 1
                 ));
             }
             if rows.len() as i32 == per_page {
                 p.push_str(&format!(
-                    r#"<a href="/admin/posts?page={}" class="btn btn-secondary">下一页</a>"#,
+                    r#"<a href="/admin/posts?page={}" class="btn btn-secondary btn-sm">下一页</a>"#,
                     page + 1
                 ));
             }
@@ -194,57 +190,69 @@ pub async fn list_posts(
         },
     );
 
-    Html(admin_page("文章管理", EXTRA_STYLE, &body))
+    Html(admin_page("文章管理", "/admin/posts", &body, &ctx))
 }
 
-pub async fn new_post_page() -> Html<String> {
-    let body = r#"<div class="container">
-            <h1>新建文章</h1>
-            <form method="POST" action="/admin/posts">
-                <div class="form-row">
-                    <label>标题</label>
-                    <input type="text" name="title" required>
-                </div>
-                <div class="form-row">
-                    <label>Slug（留空自动生成）</label>
-                    <input type="text" name="slug">
-                </div>
-                <div class="form-row">
-                    <label>内容</label>
-                    <textarea name="content"></textarea>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="form-row">
-                        <label>状态</label>
-                        <select name="status">
-                            <option value="draft">草稿</option>
-                            <option value="published">已发布</option>
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <label>分类</label>
-                        <input type="text" name="category">
-                    </div>
-                    <div class="form-row">
-                        <label>标签（逗号分隔）</label>
-                        <input type="text" name="tags">
-                    </div>
-                    <div class="form-row">
-                        <label>封面图 URL</label>
-                        <input type="text" name="cover_image">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <label>摘要</label>
-                    <input type="text" name="excerpt">
-                </div>
-                <div style="margin-top:16px;">
-                    <button type="submit" class="btn btn-primary">创建文章</button>
-                    <a href="/admin/posts" class="btn btn-secondary" style="margin-left:8px;">取消</a>
-                </div>
-            </form>
-        </div>"#;
-    Html(admin_page("新建文章", EXTRA_STYLE, body))
+pub async fn new_post_page(State(state): State<AppState>) -> Html<String> {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
+    let body = format!(
+        r#"<a href="/admin/posts" class="page-back">{icon_back} 返回文章列表</a>
+<div class="page-header">
+    <h1 class="page-title">新建文章</h1>
+</div>
+<form method="POST" action="/admin/posts">
+    <div class="form-group">
+        <label class="form-label">标题</label>
+        <input type="text" name="title" class="form-input" required>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Slug（留空自动生成）</label>
+        <input type="text" name="slug" class="form-input">
+    </div>
+    <div class="form-group">
+        <label class="form-label">内容</label>
+        <textarea name="content" class="form-textarea code"></textarea>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">状态</label>
+            <select name="status" class="form-select">
+                <option value="draft">草稿</option>
+                <option value="published">已发布</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">分类</label>
+            <input type="text" name="category" class="form-input">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">标签（逗号分隔）</label>
+            <input type="text" name="tags" class="form-input">
+        </div>
+        <div class="form-group">
+            <label class="form-label">封面图 URL</label>
+            <input type="text" name="cover_image" class="form-input">
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="form-label">摘要</label>
+        <input type="text" name="excerpt" class="form-input">
+    </div>
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary">创建文章</button>
+        <a href="/admin/posts" class="btn btn-secondary">取消</a>
+    </div>
+</form>"#,
+        icon_back = svg_icon("arrow-left"),
+    );
+
+    Html(admin_page("新建文章", "/admin/posts", &body, &ctx))
 }
 
 pub async fn create_post(
@@ -281,13 +289,18 @@ pub async fn create_post(
     .execute(&state.db)
     .await;
 
-    Redirect::to(&format!("/admin/posts/{id}/edit"))
+    Redirect::to(&format!("/admin/posts/{id}"))
 }
 
 pub async fn edit_post_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
     let row = sqlx::query(
         "SELECT id, slug, title, content, status, meta FROM posts WHERE id = ?",
     )
@@ -315,60 +328,62 @@ pub async fn edit_post_page(
     let excerpt = meta["excerpt"].as_str().unwrap_or("");
 
     let body = format!(
-        r#"<div class="container">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h1>编辑文章</h1>
-                <div style="display:flex;gap:8px;">
-                    {publish_btn}
-                    <form method="POST" action="/admin/posts/{id}/delete" onsubmit="return confirm('确定删除？')">
-                        <button type="submit" class="btn btn-danger">删除</button>
-                    </form>
-                </div>
-            </div>
-            <form method="POST" action="/admin/posts/{id}">
-                <div class="form-row">
-                    <label>标题</label>
-                    <input type="text" name="title" value="{title}" required>
-                </div>
-                <div class="form-row">
-                    <label>Slug</label>
-                    <input type="text" name="slug" value="{slug}">
-                </div>
-                <div class="form-row">
-                    <label>内容</label>
-                    <textarea name="content">{content}</textarea>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="form-row">
-                        <label>状态</label>
-                        <select name="status">
-                            <option value="draft" {sel_draft}>草稿</option>
-                            <option value="published" {sel_pub}>已发布</option>
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <label>分类</label>
-                        <input type="text" name="category" value="{category}">
-                    </div>
-                    <div class="form-row">
-                        <label>标签（逗号分隔）</label>
-                        <input type="text" name="tags" value="{tags}">
-                    </div>
-                    <div class="form-row">
-                        <label>封面图 URL</label>
-                        <input type="text" name="cover_image" value="{cover_image}">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <label>摘要</label>
-                    <input type="text" name="excerpt" value="{excerpt}">
-                </div>
-                <div style="margin-top:16px;">
-                    <button type="submit" class="btn btn-primary">保存修改</button>
-                    <a href="/admin/posts" class="btn btn-secondary" style="margin-left:8px;">返回列表</a>
-                </div>
-            </form>
-        </div>"#,
+        r#"<a href="/admin/posts" class="page-back">{icon_back} 返回文章列表</a>
+<div class="page-header">
+    <h1 class="page-title">编辑文章</h1>
+    <div style="display:flex;gap:8px;">
+        {publish_btn}
+        <form method="POST" action="/admin/posts/{id}/delete" onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;">
+            <button type="submit" class="btn btn-danger">删除</button>
+        </form>
+    </div>
+</div>
+<form method="POST" action="/admin/posts/{id}">
+    <div class="form-group">
+        <label class="form-label">标题</label>
+        <input type="text" name="title" value="{title}" class="form-input" required>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Slug</label>
+        <input type="text" name="slug" value="{slug}" class="form-input">
+    </div>
+    <div class="form-group">
+        <label class="form-label">内容</label>
+        <textarea name="content" class="form-textarea code">{content}</textarea>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">状态</label>
+            <select name="status" class="form-select">
+                <option value="draft" {sel_draft}>草稿</option>
+                <option value="published" {sel_pub}>已发布</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">分类</label>
+            <input type="text" name="category" value="{category}" class="form-input">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">标签（逗号分隔）</label>
+            <input type="text" name="tags" value="{tags}" class="form-input">
+        </div>
+        <div class="form-group">
+            <label class="form-label">封面图 URL</label>
+            <input type="text" name="cover_image" value="{cover_image}" class="form-input">
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="form-label">摘要</label>
+        <input type="text" name="excerpt" value="{excerpt}" class="form-input">
+    </div>
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary">保存修改</button>
+        <a href="/admin/posts" class="btn btn-secondary">返回列表</a>
+    </div>
+</form>"#,
+        icon_back = svg_icon("arrow-left"),
         id = html_escape(post_id),
         title = html_escape(post_title),
         slug = html_escape(post_slug),
@@ -392,7 +407,7 @@ pub async fn edit_post_page(
         },
     );
 
-    Html(admin_page("编辑文章", EXTRA_STYLE, &body))
+    Html(admin_page("编辑文章", "/admin/posts", &body, &ctx))
 }
 
 pub async fn update_post(
@@ -428,7 +443,7 @@ pub async fn update_post(
     .execute(&state.db)
     .await;
 
-    Redirect::to(&format!("/admin/posts/{id}/edit"))
+    Redirect::to(&format!("/admin/posts/{id}"))
 }
 
 pub async fn delete_post(
@@ -456,7 +471,7 @@ pub async fn publish_post(
         .execute(&state.db)
         .await;
 
-    Redirect::to(&format!("/admin/posts/{id}/edit"))
+    Redirect::to(&format!("/admin/posts/{id}"))
 }
 
 pub async fn unpublish_post(
@@ -470,5 +485,5 @@ pub async fn unpublish_post(
         .execute(&state.db)
         .await;
 
-    Redirect::to(&format!("/admin/posts/{id}/edit"))
+    Redirect::to(&format!("/admin/posts/{id}"))
 }

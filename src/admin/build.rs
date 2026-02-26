@@ -4,13 +4,9 @@ use axum::response::{Html, Redirect};
 use sqlx::Row;
 use std::sync::Arc;
 
-use crate::admin::layout::{admin_page_with_script, html_escape};
+use crate::admin::layout::{admin_page_with_script, html_escape, PageContext};
 use crate::build::events::BuildEvent;
 use crate::state::AppState;
-
-const EXTRA_STYLE: &str = r#"
-    .error-text { color:#c62828; font-size:12px; }
-"#;
 
 pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     #[derive(sqlx::FromRow)]
@@ -33,9 +29,9 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     let mut table_rows = String::new();
     for row in &rows {
         let badge = match row.status.as_str() {
-            "success" => r#"<span class="status-badge status-success">成功</span>"#,
-            "failed" => r#"<span class="status-badge status-failed">失败</span>"#,
-            _ => r#"<span class="status-badge status-running">进行中</span>"#,
+            "success" => r#"<span class="badge badge-success">成功</span>"#,
+            "failed" => r#"<span class="badge badge-danger">失败</span>"#,
+            _ => r#"<span class="badge badge-warning">进行中</span>"#,
         };
         let duration = row
             .duration_ms
@@ -45,7 +41,7 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
         let error_html = row
             .error
             .as_deref()
-            .map(|e| format!(r#"<span class="error-text" title="{}">{}</span>"#, html_escape(e), html_escape(&e.chars().take(80).collect::<String>())))
+            .map(|e| format!(r#"<span class="badge badge-danger" title="{}">{}</span>"#, html_escape(e), html_escape(&e.chars().take(80).collect::<String>())))
             .unwrap_or_default();
 
         table_rows.push_str(&format!(
@@ -67,16 +63,16 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     }
 
     let body = format!(
-        r#"<div class="container">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h1>构建历史</h1>
-                <div style="display:flex;gap:12px;align-items:center;">
-                    <div id="build-status"></div>
-                    <form method="POST" action="/admin/build">
-                        <button type="submit" class="btn btn-success">触发构建</button>
-                    </form>
-                </div>
+        r#"<div class="page-header">
+            <h1 class="page-title">构建管理</h1>
+            <div class="actions">
+                <div id="build-status"></div>
+                <form method="POST" action="/admin/build">
+                    <button type="submit" class="btn btn-success">触发构建</button>
+                </form>
             </div>
+        </div>
+        <div class="table-wrapper">
             <table>
                 <thead><tr><th>开始时间</th><th>触发方式</th><th>状态</th><th>耗时</th><th>完成时间</th><th>错误</th></tr></thead>
                 <tbody>{table_rows}</tbody>
@@ -93,23 +89,28 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
             ws.onmessage = function(e) {
                 var event = JSON.parse(e.data);
                 if (event.type === 'Started') {
-                    el.innerHTML = '<span class="status-badge status-running">构建中...</span>';
+                    el.innerHTML = '<span class="badge badge-warning">构建中...</span>';
                 } else if (event.type === 'Finished') {
-                    el.innerHTML = '<span class="status-badge status-success">完成: '
+                    el.innerHTML = '<span class="badge badge-success">完成: '
                         + event.total_pages + '页, '
                         + event.rebuilt + '重建, '
                         + event.cached + '缓存, '
                         + event.total_ms + 'ms</span>';
                     setTimeout(function() { location.reload(); }, 1500);
                 } else if (event.type === 'Failed') {
-                    el.innerHTML = '<span class="status-badge status-failed">失败: ' + event.error + '</span>';
+                    el.innerHTML = '<span class="badge badge-danger">失败: ' + event.error + '</span>';
                     setTimeout(function() { location.reload(); }, 1500);
                 }
             };
         })();
     "#;
 
-    Html(admin_page_with_script("构建历史", EXTRA_STYLE, &body, script))
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
+    Html(admin_page_with_script("构建管理", "/admin/build", &body, script, &ctx))
 }
 
 pub async fn trigger_build(State(state): State<AppState>) -> Redirect {

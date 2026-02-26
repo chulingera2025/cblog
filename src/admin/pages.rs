@@ -3,7 +3,7 @@ use axum::response::{Html, Redirect};
 use serde::Deserialize;
 use sqlx::Row;
 
-use crate::admin::layout::{admin_page, html_escape};
+use crate::admin::layout::{admin_page, html_escape, svg_icon, PageContext};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -33,14 +33,15 @@ fn generate_slug(title: &str) -> String {
         .join("-")
 }
 
-const EXTRA_STYLE: &str = r#"
-    textarea { min-height:300px; font-family:monospace; }
-"#;
-
 pub async fn list_pages(
     State(state): State<AppState>,
     Query(params): Query<ListQuery>,
 ) -> Html<String> {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i32 = 20;
     let offset = (page as i32 - 1) * per_page;
@@ -80,29 +81,24 @@ pub async fn list_pages(
         let template: Option<&str> = row.get("template");
         let updated_at: &str = row.get("updated_at");
 
-        let badge_class = if status == "published" {
-            "status-published"
+        let (badge_class, status_label) = if status == "published" {
+            ("badge-success", "已发布")
         } else {
-            "status-draft"
-        };
-        let status_label = if status == "published" {
-            "已发布"
-        } else {
-            "草稿"
+            ("badge-warning", "草稿")
         };
         let tpl = template.unwrap_or("default");
 
         table_rows.push_str(&format!(
             r#"<tr>
-                <td><a href="/admin/pages/{id}/edit">{title}</a></td>
+                <td><a href="/admin/pages/{id}">{title}</a></td>
                 <td>{slug}</td>
-                <td><span class="status-badge {badge_class}">{status_label}</span></td>
+                <td><span class="badge {badge_class}">{status_label}</span></td>
                 <td>{tpl}</td>
                 <td>{updated_at}</td>
                 <td class="actions">
-                    <a href="/admin/pages/{id}/edit" class="btn btn-secondary" style="padding:2px 8px;font-size:12px;">编辑</a>
-                    <form method="POST" action="/admin/pages/{id}/delete" style="display:inline;" onsubmit="return confirm('确定删除？')">
-                        <button type="submit" class="btn btn-danger" style="padding:2px 8px;font-size:12px;">删除</button>
+                    <a href="/admin/pages/{id}" class="btn btn-secondary btn-sm">编辑</a>
+                    <form method="POST" action="/admin/pages/{id}/delete" style="display:inline;" onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;">
+                        <button type="submit" class="btn btn-danger btn-sm">删除</button>
                     </form>
                 </td>
             </tr>"#,
@@ -117,31 +113,32 @@ pub async fn list_pages(
     }
 
     let body = format!(
-        r#"<div class="container">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h1>页面管理</h1>
-                <a href="/admin/pages/new" class="btn btn-primary">新建页面</a>
-            </div>
-            <table>
-                <thead><tr><th>标题</th><th>Slug</th><th>状态</th><th>模板</th><th>更新时间</th><th>操作</th></tr></thead>
-                <tbody>{table_rows}</tbody>
-            </table>
-            <div style="margin-top:16px;display:flex;gap:8px;">
-                {pagination}
-            </div>
-        </div>"#,
+        r#"<div class="page-header">
+    <h1 class="page-title">页面管理</h1>
+    <a href="/admin/pages/new" class="btn btn-primary">{icon_plus} 新建页面</a>
+</div>
+<div class="table-wrapper">
+    <table>
+        <thead><tr><th>标题</th><th>Slug</th><th>状态</th><th>模板</th><th>更新时间</th><th>操作</th></tr></thead>
+        <tbody>{table_rows}</tbody>
+    </table>
+</div>
+<div class="pagination">
+    {pagination}
+</div>"#,
+        icon_plus = svg_icon("plus"),
         table_rows = table_rows,
         pagination = {
             let mut p = String::new();
             if page > 1 {
                 p.push_str(&format!(
-                    r#"<a href="/admin/pages?page={}" class="btn btn-secondary">上一页</a>"#,
+                    r#"<a href="/admin/pages?page={}" class="btn btn-secondary btn-sm">上一页</a>"#,
                     page - 1
                 ));
             }
             if rows.len() as i32 == per_page {
                 p.push_str(&format!(
-                    r#"<a href="/admin/pages?page={}" class="btn btn-secondary">下一页</a>"#,
+                    r#"<a href="/admin/pages?page={}" class="btn btn-secondary btn-sm">下一页</a>"#,
                     page + 1
                 ));
             }
@@ -149,45 +146,55 @@ pub async fn list_pages(
         },
     );
 
-    Html(admin_page("页面管理", EXTRA_STYLE, &body))
+    Html(admin_page("页面管理", "/admin/pages", &body, &ctx))
 }
 
-pub async fn new_page_page() -> Html<String> {
-    let body = r#"<div class="container">
-            <h1>新建页面</h1>
-            <form method="POST" action="/admin/pages">
-                <div class="form-row">
-                    <label>标题</label>
-                    <input type="text" name="title" required>
-                </div>
-                <div class="form-row">
-                    <label>Slug（留空自动生成）</label>
-                    <input type="text" name="slug">
-                </div>
-                <div class="form-row">
-                    <label>内容</label>
-                    <textarea name="content"></textarea>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="form-row">
-                        <label>状态</label>
-                        <select name="status">
-                            <option value="draft">草稿</option>
-                            <option value="published">已发布</option>
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <label>模板</label>
-                        <input type="text" name="template" placeholder="default">
-                    </div>
-                </div>
-                <div style="margin-top:16px;">
-                    <button type="submit" class="btn btn-primary">创建页面</button>
-                    <a href="/admin/pages" class="btn btn-secondary" style="margin-left:8px;">取消</a>
-                </div>
-            </form>
-        </div>"#;
-    Html(admin_page("新建页面", EXTRA_STYLE, body))
+pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
+    let body = format!(
+        r#"<a href="/admin/pages" class="page-back">{icon_back} 返回页面列表</a>
+<div class="page-header">
+    <h1 class="page-title">新建页面</h1>
+</div>
+<form method="POST" action="/admin/pages">
+    <div class="form-group">
+        <label class="form-label">标题</label>
+        <input type="text" name="title" class="form-input" required>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Slug（留空自动生成）</label>
+        <input type="text" name="slug" class="form-input">
+    </div>
+    <div class="form-group">
+        <label class="form-label">内容</label>
+        <textarea name="content" class="form-textarea code"></textarea>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">状态</label>
+            <select name="status" class="form-select">
+                <option value="draft">草稿</option>
+                <option value="published">已发布</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">模板</label>
+            <input type="text" name="template" placeholder="default" class="form-input">
+        </div>
+    </div>
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary">创建页面</button>
+        <a href="/admin/pages" class="btn btn-secondary">取消</a>
+    </div>
+</form>"#,
+        icon_back = svg_icon("arrow-left"),
+    );
+
+    Html(admin_page("新建页面", "/admin/pages", &body, &ctx))
 }
 
 pub async fn create_page(
@@ -217,13 +224,18 @@ pub async fn create_page(
     .execute(&state.db)
     .await;
 
-    Redirect::to(&format!("/admin/pages/{id}/edit"))
+    Redirect::to(&format!("/admin/pages/{id}"))
 }
 
 pub async fn edit_page_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
+    let ctx = PageContext {
+        site_title: state.config.site.title.clone(),
+        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    };
+
     let row = sqlx::query(
         "SELECT id, slug, title, content, status, template FROM pages WHERE id = ?",
     )
@@ -245,45 +257,45 @@ pub async fn edit_page_page(
     let pg_template: Option<&str> = pg.get("template");
 
     let body = format!(
-        r#"<div class="container">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <h1>编辑页面</h1>
-                <form method="POST" action="/admin/pages/{id}/delete" onsubmit="return confirm('确定删除？')">
-                    <button type="submit" class="btn btn-danger">删除</button>
-                </form>
-            </div>
-            <form method="POST" action="/admin/pages/{id}">
-                <div class="form-row">
-                    <label>标题</label>
-                    <input type="text" name="title" value="{title}" required>
-                </div>
-                <div class="form-row">
-                    <label>Slug</label>
-                    <input type="text" name="slug" value="{slug}">
-                </div>
-                <div class="form-row">
-                    <label>内容</label>
-                    <textarea name="content">{content}</textarea>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                    <div class="form-row">
-                        <label>状态</label>
-                        <select name="status">
-                            <option value="draft" {sel_draft}>草稿</option>
-                            <option value="published" {sel_pub}>已发布</option>
-                        </select>
-                    </div>
-                    <div class="form-row">
-                        <label>模板</label>
-                        <input type="text" name="template" value="{template}">
-                    </div>
-                </div>
-                <div style="margin-top:16px;">
-                    <button type="submit" class="btn btn-primary">保存修改</button>
-                    <a href="/admin/pages" class="btn btn-secondary" style="margin-left:8px;">返回列表</a>
-                </div>
-            </form>
-        </div>"#,
+        r#"<a href="/admin/pages" class="page-back">{icon_back} 返回页面列表</a>
+<div class="page-header">
+    <h1 class="page-title">编辑页面</h1>
+    <form method="POST" action="/admin/pages/{id}/delete" onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;">
+        <button type="submit" class="btn btn-danger">删除</button>
+    </form>
+</div>
+<form method="POST" action="/admin/pages/{id}">
+    <div class="form-group">
+        <label class="form-label">标题</label>
+        <input type="text" name="title" value="{title}" class="form-input" required>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Slug</label>
+        <input type="text" name="slug" value="{slug}" class="form-input">
+    </div>
+    <div class="form-group">
+        <label class="form-label">内容</label>
+        <textarea name="content" class="form-textarea code">{content}</textarea>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">状态</label>
+            <select name="status" class="form-select">
+                <option value="draft" {sel_draft}>草稿</option>
+                <option value="published" {sel_pub}>已发布</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">模板</label>
+            <input type="text" name="template" value="{template}" class="form-input">
+        </div>
+    </div>
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary">保存修改</button>
+        <a href="/admin/pages" class="btn btn-secondary">返回列表</a>
+    </div>
+</form>"#,
+        icon_back = svg_icon("arrow-left"),
         id = html_escape(pg_id),
         title = html_escape(pg_title),
         slug = html_escape(pg_slug),
@@ -293,7 +305,7 @@ pub async fn edit_page_page(
         template = html_escape(pg_template.unwrap_or("")),
     );
 
-    Html(admin_page("编辑页面", EXTRA_STYLE, &body))
+    Html(admin_page("编辑页面", "/admin/pages", &body, &ctx))
 }
 
 pub async fn update_page(
@@ -322,7 +334,7 @@ pub async fn update_page(
     .execute(&state.db)
     .await;
 
-    Redirect::to(&format!("/admin/pages/{id}/edit"))
+    Redirect::to(&format!("/admin/pages/{id}"))
 }
 
 pub async fn delete_page(

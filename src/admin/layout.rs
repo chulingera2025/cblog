@@ -1232,6 +1232,156 @@ a:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ── Gutenberg Editor Layout ── */
+.editor-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+    align-items: start;
+}
+
+.editor-main {
+    min-width: 0;
+}
+
+.editor-sidebar {
+    position: sticky;
+    top: 20px;
+}
+
+.editor-sidebar .card {
+    margin-bottom: 16px;
+}
+
+.editor-sidebar .card-body {
+    padding: 16px;
+}
+
+.editor-title-input {
+    width: 100%;
+    border: none;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--c-text-primary);
+    outline: none;
+    padding: 0;
+    margin-bottom: 16px;
+    line-height: 1.3;
+    background: transparent;
+}
+
+.editor-title-input::placeholder {
+    color: var(--c-text-secondary);
+    opacity: 0.5;
+}
+
+.tag-input-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    min-height: 38px;
+    cursor: text;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.tag-input-container:focus-within {
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px rgba(99,91,255,.12);
+}
+
+.tag-input-container .tag-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--c-brand);
+    color: #fff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tag-input-container .tag-badge .tag-remove {
+    cursor: pointer;
+    opacity: 0.7;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.tag-input-container .tag-badge .tag-remove:hover {
+    opacity: 1;
+}
+
+.tag-input-container input {
+    flex: 1;
+    min-width: 80px;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    padding: 2px 4px;
+    background: transparent;
+}
+
+.cover-preview {
+    margin-top: 8px;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.cover-preview img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    display: block;
+}
+
+.editor-drop-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(99,91,255,.1);
+    border: 3px dashed var(--c-brand);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--c-brand);
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.media-upload-zone {
+    border: 2px dashed var(--c-border);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+    margin-bottom: 12px;
+}
+
+.media-upload-zone:hover {
+    border-color: var(--c-brand);
+    background: rgba(99,91,255,.04);
+}
+
+.media-upload-zone.uploading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+    .editor-layout {
+        grid-template-columns: 1fr;
+    }
+    .editor-sidebar {
+        position: static;
+    }
+}
 "#;
 
 // ── Toast JS ──

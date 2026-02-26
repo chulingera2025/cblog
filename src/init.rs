@@ -4,10 +4,8 @@ use std::path::Path;
 
 // 嵌入默认 cblog.toml
 const DEFAULT_CONFIG: &str = r#"[site]
-title = "My Blog"
 subtitle = ""
 description = ""
-url = "https://example.com"
 language = "zh-CN"
 timezone = "Asia/Shanghai"
 

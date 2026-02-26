@@ -295,6 +295,14 @@ pub async fn create_post(
     .execute(&state.db)
     .await;
 
+    sync_post_taxonomy(
+        &state.db,
+        &id,
+        form.tags.as_deref().unwrap_or(""),
+        form.category.as_deref().unwrap_or(""),
+    )
+    .await;
+
     if status == "published" {
         let state_clone = state.clone();
         tokio::spawn(async move {
@@ -461,6 +469,14 @@ pub async fn update_post(
     .execute(&state.db)
     .await;
 
+    sync_post_taxonomy(
+        &state.db,
+        &id,
+        form.tags.as_deref().unwrap_or(""),
+        form.category.as_deref().unwrap_or(""),
+    )
+    .await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:update_post").await;
@@ -524,4 +540,102 @@ pub async fn unpublish_post(
     });
 
     Redirect::to(&format!("/admin/posts/{id}"))
+}
+
+/// 同步文章的分类和标签关联表
+/// 根据表单提交的 tags（逗号分隔）和 category 字符串，
+/// 清空旧关联并重建，对不存在的标签/分类自动创建
+async fn sync_post_taxonomy(
+    db: &sqlx::SqlitePool,
+    post_id: &str,
+    tags_str: &str,
+    category_str: &str,
+) {
+    // 同步标签
+    let _ = sqlx::query("DELETE FROM post_tags WHERE post_id = ?")
+        .bind(post_id)
+        .execute(db)
+        .await;
+
+    let tags: Vec<&str> = tags_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    for tag_name in tags {
+        let slug = generate_slug(tag_name);
+        if let Some(tag_id) = get_or_create_tag(db, tag_name, &slug).await {
+            let _ = sqlx::query("INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)")
+                .bind(post_id)
+                .bind(&tag_id)
+                .execute(db)
+                .await;
+        }
+    }
+
+    // 同步分类
+    let _ = sqlx::query("DELETE FROM post_categories WHERE post_id = ?")
+        .bind(post_id)
+        .execute(db)
+        .await;
+
+    let category = category_str.trim();
+    if !category.is_empty() {
+        let slug = generate_slug(category);
+        if let Some(cat_id) = get_or_create_category(db, category, &slug).await {
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)",
+            )
+            .bind(post_id)
+            .bind(&cat_id)
+            .execute(db)
+            .await;
+        }
+    }
+}
+
+async fn get_or_create_tag(db: &sqlx::SqlitePool, name: &str, slug: &str) -> Option<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+            .bind(name)
+            .fetch_optional(db)
+            .await
+            .ok()?;
+
+    if let Some((id,)) = existing {
+        return Some(id);
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT INTO tags (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(slug)
+        .bind(&now)
+        .execute(db)
+        .await
+        .ok()?;
+    Some(id)
+}
+
+async fn get_or_create_category(db: &sqlx::SqlitePool, name: &str, slug: &str) -> Option<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM categories WHERE name = ?")
+            .bind(name)
+            .fetch_optional(db)
+            .await
+            .ok()?;
+
+    if let Some((id,)) = existing {
+        return Some(id);
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT INTO categories (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(slug)
+        .bind(&now)
+        .execute(db)
+        .await
+        .ok()?;
+    Some(id)
 }

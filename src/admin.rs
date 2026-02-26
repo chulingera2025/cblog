@@ -12,6 +12,7 @@ pub mod build;
 pub mod cleanup;
 pub mod dashboard;
 pub mod health;
+pub mod install;
 pub mod layout;
 pub mod media;
 pub mod pages;

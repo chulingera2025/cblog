@@ -6,7 +6,7 @@ use crate::state::AppState;
 
 pub async fn profile_page(State(state): State<AppState>) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 

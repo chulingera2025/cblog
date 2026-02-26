@@ -38,7 +38,7 @@ pub async fn list_pages(
     Query(params): Query<ListQuery>,
 ) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
@@ -151,7 +151,7 @@ pub async fn list_pages(
 
 pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
@@ -245,7 +245,7 @@ pub async fn edit_page_page(
     Path(id): Path<String>,
 ) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 

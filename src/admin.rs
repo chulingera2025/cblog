@@ -125,7 +125,7 @@ async fn plugin_admin_page(
     Path((plugin_name, slug)): Path<(String, String)>,
 ) -> Response {
     let ctx = layout::PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 

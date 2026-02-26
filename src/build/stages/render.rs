@@ -14,6 +14,7 @@ pub fn render_pages(
     project_root: &Path,
     config: &SiteConfig,
     pages: &[RenderPage],
+    theme_config: &HashMap<String, serde_json::Value>,
 ) -> Result<()> {
     let output_dir = project_root.join(&config.build.output_dir);
     let themes_dir = project_root.join("themes");
@@ -59,6 +60,9 @@ pub fn render_pages(
 
         let mut ctx = page.context.as_object().cloned().unwrap_or_default();
         ctx.insert("site".into(), site_ctx.clone());
+        let config_obj: serde_json::Map<String, serde_json::Value> =
+            theme_config.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        ctx.insert("config".into(), serde_json::Value::Object(config_obj));
         let ctx_value = minijinja::Value::from_serialize(&ctx);
 
         let html = match tmpl.render(ctx_value) {

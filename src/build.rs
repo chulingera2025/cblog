@@ -15,6 +15,7 @@ pub fn run(
     config: &SiteConfig,
     clean: bool,
     plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
+    theme_saved_config: HashMap<String, serde_json::Value>,
 ) -> Result<BuildStats> {
     let output_dir = project_root.join(&config.build.output_dir);
 
@@ -32,7 +33,7 @@ pub fn run(
 
     std::fs::create_dir_all(&output_dir)?;
 
-    let stats = pipeline::execute(project_root, config, plugin_configs)?;
+    let stats = pipeline::execute(project_root, config, plugin_configs, theme_saved_config)?;
 
     Ok(stats)
 }

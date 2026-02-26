@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -191,6 +192,41 @@ pub fn toml_to_json(val: &toml::Value) -> serde_json::Value {
         }
         toml::Value::Datetime(dt) => serde_json::Value::String(dt.to_string()),
     }
+}
+
+/// 同步加载指定主题的配置（用于 cblog build 等无 async runtime 的场景）
+pub fn load_theme_config_sync(
+    db_path: &Path,
+    theme_name: &str,
+) -> HashMap<String, serde_json::Value> {
+    if !db_path.exists() || theme_name.is_empty() {
+        return HashMap::new();
+    }
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return HashMap::new();
+    };
+    rt.block_on(async {
+        let db_url = format!("sqlite:{}?mode=ro", db_path.display());
+        let Ok(pool) = sqlx::SqlitePool::connect(&db_url).await else {
+            return HashMap::new();
+        };
+        let row = sqlx::query("SELECT config FROM theme_config WHERE theme_name = ?")
+            .bind(theme_name)
+            .fetch_optional(&pool)
+            .await
+            .ok()
+            .flatten();
+        match row {
+            Some(row) => {
+                let json_str: String = row.get("config");
+                serde_json::from_str(&json_str).unwrap_or_default()
+            }
+            None => HashMap::new(),
+        }
+    })
 }
 
 fn default_toml_value() -> toml::Value {

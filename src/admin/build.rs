@@ -1,6 +1,7 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::{Html, Redirect};
+use sqlx::Row;
 use std::sync::Arc;
 
 use crate::build::events::BuildEvent;
@@ -170,8 +171,22 @@ pub async fn trigger_build(State(state): State<AppState>) -> Redirect {
         }
     }
 
+    // 预取主题配置
+    let theme_saved_config: std::collections::HashMap<String, serde_json::Value> =
+        sqlx::query("SELECT config FROM theme_config WHERE theme_name = ?")
+            .bind(&config.theme.active)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|row| {
+                let json_str: String = row.get("config");
+                serde_json::from_str(&json_str).ok()
+            })
+            .unwrap_or_default();
+
     let result = tokio::task::spawn_blocking(move || {
-        crate::build::run(&project_root, &config, false, plugin_configs)
+        crate::build::run(&project_root, &config, false, plugin_configs, theme_saved_config)
     })
     .await;
 

@@ -4,6 +4,8 @@ use axum::http::StatusCode;
 use axum::response::Html;
 use sqlx::Row;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use crate::admin::layout::{admin_page_with_script, format_datetime, html_escape, PageContext};
 use crate::build::events::BuildEvent;
@@ -109,9 +111,11 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
                 });
             });
 
+            var lastTrigger = 'manual';
             ws.onmessage = function(e) {
                 var event = JSON.parse(e.data);
                 if (event.type === 'Started') {
+                    lastTrigger = event.trigger || 'manual';
                     statusEl.innerHTML = '<span class="badge badge-warning">构建中...</span>';
                     btn.disabled = true;
                     btn.textContent = '构建中...';
@@ -126,7 +130,7 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
                     var now = fmtTime(new Date());
                     var tr = document.createElement('tr');
                     tr.innerHTML = '<td>' + now + '</td>'
-                        + '<td>manual</td>'
+                        + '<td>' + escHtml(lastTrigger) + '</td>'
                         + '<td><span class="badge badge-success">成功</span></td>'
                         + '<td>' + event.total_ms + 'ms</td>'
                         + '<td>' + now + '</td>'
@@ -140,7 +144,7 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
                     var errMsg = (event.error || '').substring(0, 80);
                     var tr = document.createElement('tr');
                     tr.innerHTML = '<td>' + now + '</td>'
-                        + '<td>manual</td>'
+                        + '<td>' + escHtml(lastTrigger) + '</td>'
                         + '<td><span class="badge badge-danger">失败</span></td>'
                         + '<td>-</td>'
                         + '<td>' + now + '</td>'
@@ -159,15 +163,32 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     Html(admin_page_with_script("构建管理", "/admin/build", &body, script, &ctx))
 }
 
-/// 异步触发构建，立即返回 202，构建在后台执行
-pub async fn trigger_build(State(state): State<AppState>) -> StatusCode {
+/// 核心构建逻辑：防抖 + 互斥锁 + 预取数据 + 执行构建 + 记录历史
+/// 非 manual 触发会应用 2 秒防抖，manual 触发直接执行
+pub async fn spawn_build(state: &AppState, trigger: &str) {
+    let my_id = state.build_request_counter.fetch_add(1, Ordering::SeqCst) + 1;
+
+    // 非手动触发时应用 2 秒防抖
+    if trigger != "manual" {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let current = state.build_request_counter.load(Ordering::SeqCst);
+        if current != my_id {
+            return;
+        }
+    }
+
+    // 获取构建互斥锁，确保同一时刻只有一个构建在执行
+    let _lock = state.build_mutex.lock().await;
+
+    let trigger_str = trigger.to_string();
+
     let _ = state.build_events.send(BuildEvent::Started {
-        trigger: "manual".to_string(),
+        trigger: trigger_str.clone(),
     });
 
     let config = Arc::clone(&state.config);
 
-    // 预取插件配置（需要 async）
+    // 预取插件配置
     let mut plugin_configs = std::collections::HashMap::new();
     for name in &config.plugins.enabled {
         if let Ok(cfg) = crate::plugin::store::PluginStore::get_all(&state.db, name).await
@@ -217,70 +238,75 @@ pub async fn trigger_build(State(state): State<AppState>) -> StatusCode {
     })
     .collect();
 
-    // 后台执行构建，不阻塞响应
     let project_root = state.project_root.clone();
     let db = state.db.clone();
     let build_events = state.build_events.clone();
 
-    tokio::task::spawn(async move {
-        let started_at = chrono::Utc::now().to_rfc3339();
+    let started_at = chrono::Utc::now().to_rfc3339();
 
-        let build_root = project_root.clone();
-        let build_config = Arc::clone(&config);
-        let result = tokio::task::spawn_blocking(move || {
-            crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config, db_posts)
-        })
-        .await;
+    let build_root = project_root.clone();
+    let build_config = Arc::clone(&config);
+    let result = tokio::task::spawn_blocking(move || {
+        crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config, db_posts)
+    })
+    .await;
 
-        let finished_at = chrono::Utc::now().to_rfc3339();
-        let start_time = chrono::DateTime::parse_from_rfc3339(&started_at).ok();
-        let duration_ms = start_time.map(|s| {
-            (chrono::Utc::now() - s.with_timezone(&chrono::Utc)).num_milliseconds()
-        });
-
-        let (status, error, stats) = match &result {
-            Ok(Ok(stats)) => ("success", None, Some(stats.clone())),
-            Ok(Err(e)) => ("failed", Some(format!("{e:#}")), None),
-            Err(e) => ("failed", Some(format!("任务执行异常: {e}")), None),
-        };
-
-        match stats {
-            Some(ref s) => {
-                let _ = build_events.send(BuildEvent::Finished {
-                    total_ms: duration_ms.unwrap_or(0) as u64,
-                    total_pages: s.total_pages,
-                    rebuilt: s.rebuilt,
-                    cached: s.cached,
-                });
-            }
-            None => {
-                let _ = build_events.send(BuildEvent::Failed {
-                    error: error.clone().unwrap_or_default(),
-                });
-            }
-        }
-
-        let id = ulid::Ulid::new().to_string();
-        let total_pages = stats.as_ref().map(|s| s.total_pages as i64);
-        let rebuilt = stats.as_ref().map(|s| s.rebuilt as i64);
-        let cached = stats.as_ref().map(|s| s.cached as i64);
-
-        let _ = sqlx::query(
-            "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at, total_pages, rebuilt, cached) VALUES (?, 'manual', ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(status)
-        .bind(duration_ms)
-        .bind(error.as_deref())
-        .bind(&started_at)
-        .bind(&finished_at)
-        .bind(total_pages)
-        .bind(rebuilt)
-        .bind(cached)
-        .execute(&db)
-        .await;
+    let finished_at = chrono::Utc::now().to_rfc3339();
+    let start_time = chrono::DateTime::parse_from_rfc3339(&started_at).ok();
+    let duration_ms = start_time.map(|s| {
+        (chrono::Utc::now() - s.with_timezone(&chrono::Utc)).num_milliseconds()
     });
 
+    let (status, error, stats) = match &result {
+        Ok(Ok(stats)) => ("success", None, Some(stats.clone())),
+        Ok(Err(e)) => ("failed", Some(format!("{e:#}")), None),
+        Err(e) => ("failed", Some(format!("任务执行异常: {e}")), None),
+    };
+
+    match stats {
+        Some(ref s) => {
+            let _ = build_events.send(BuildEvent::Finished {
+                total_ms: duration_ms.unwrap_or(0) as u64,
+                total_pages: s.total_pages,
+                rebuilt: s.rebuilt,
+                cached: s.cached,
+            });
+        }
+        None => {
+            let _ = build_events.send(BuildEvent::Failed {
+                error: error.clone().unwrap_or_default(),
+            });
+        }
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let total_pages = stats.as_ref().map(|s| s.total_pages as i64);
+    let rebuilt = stats.as_ref().map(|s| s.rebuilt as i64);
+    let cached = stats.as_ref().map(|s| s.cached as i64);
+
+    let _ = sqlx::query(
+        "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at, total_pages, rebuilt, cached) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&trigger_str)
+    .bind(status)
+    .bind(duration_ms)
+    .bind(error.as_deref())
+    .bind(&started_at)
+    .bind(&finished_at)
+    .bind(total_pages)
+    .bind(rebuilt)
+    .bind(cached)
+    .execute(&db)
+    .await;
+}
+
+/// 异步触发构建，立即返回 202，构建在后台执行
+pub async fn trigger_build(State(state): State<AppState>) -> StatusCode {
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        spawn_build(&state_clone, "manual").await;
+    });
     StatusCode::ACCEPTED
 }
 

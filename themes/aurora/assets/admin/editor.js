@@ -1,56 +1,66 @@
-import { Editor } from 'https://esm.sh/@tiptap/core@2'
-import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2'
-import Link from 'https://esm.sh/@tiptap/extension-link@2'
-import Image from 'https://esm.sh/@tiptap/extension-image@2'
-import Table from 'https://esm.sh/@tiptap/extension-table@2'
-import TableRow from 'https://esm.sh/@tiptap/extension-table-row@2'
-import TableCell from 'https://esm.sh/@tiptap/extension-table-cell@2'
-import TableHeader from 'https://esm.sh/@tiptap/extension-table-header@2'
-import Underline from 'https://esm.sh/@tiptap/extension-underline@2'
-import TextAlign from 'https://esm.sh/@tiptap/extension-text-align@2'
-import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2'
-import TextStyle from 'https://esm.sh/@tiptap/extension-text-style@2'
-import Color from 'https://esm.sh/@tiptap/extension-color@2'
-import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2'
-import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2'
-import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2'
-import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2'
-import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2'
-import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2'
-import Typography from 'https://esm.sh/@tiptap/extension-typography@2'
+import { Editor } from 'https://esm.sh/@tiptap/core@2.27.2'
+import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.27.2'
+import Link from 'https://esm.sh/@tiptap/extension-link@2.27.2'
+import Image from 'https://esm.sh/@tiptap/extension-image@2.27.2'
+import Table from 'https://esm.sh/@tiptap/extension-table@2.27.2'
+import TableRow from 'https://esm.sh/@tiptap/extension-table-row@2.27.2'
+import TableCell from 'https://esm.sh/@tiptap/extension-table-cell@2.27.2'
+import TableHeader from 'https://esm.sh/@tiptap/extension-table-header@2.27.2'
+import Underline from 'https://esm.sh/@tiptap/extension-underline@2.27.2'
+import TextAlign from 'https://esm.sh/@tiptap/extension-text-align@2.27.2'
+import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.27.2'
+import TextStyle from 'https://esm.sh/@tiptap/extension-text-style@2.27.2'
+import Color from 'https://esm.sh/@tiptap/extension-color@2.27.2'
+import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.27.2'
+import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2.27.2'
+import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2.27.2'
+import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2.27.2'
+import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2.27.2'
+import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2.27.2'
+import Typography from 'https://esm.sh/@tiptap/extension-typography@2.27.2'
 
+const editorElement = document.getElementById('editor');
 const contentDataEl = document.getElementById('editor-content-data');
 const initialContent = contentDataEl ? JSON.parse(contentDataEl.textContent) : '';
 
-const editor = new Editor({
-    element: document.getElementById('editor'),
-    extensions: [
-        StarterKit,
-        Link.configure({ openOnClick: false }),
-        Image,
-        Table.configure({ resizable: true }),
-        TableRow,
-        TableCell,
-        TableHeader,
-        Underline,
-        TextAlign.configure({ types: ['heading', 'paragraph'] }),
-        Placeholder.configure({ placeholder: '开始编写内容...' }),
-        TextStyle,
-        Color,
-        Highlight.configure({ multicolor: true }),
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        Subscript,
-        Superscript,
-        CharacterCount,
-        Typography,
-    ],
-    content: initialContent,
-    onUpdate({ editor }) {
-        document.getElementById('content-input').value = editor.getHTML();
-        updateCharCount(editor);
-    },
-});
+let editor;
+
+try {
+    editor = new Editor({
+        element: editorElement,
+        extensions: [
+            StarterKit,
+            Link.configure({ openOnClick: false }),
+            Image,
+            Table.configure({ resizable: true }),
+            TableRow,
+            TableCell,
+            TableHeader,
+            Underline,
+            TextAlign.configure({ types: ['heading', 'paragraph'] }),
+            Placeholder.configure({ placeholder: '开始编写内容...' }),
+            TextStyle,
+            Color,
+            Highlight.configure({ multicolor: true }),
+            TaskList,
+            TaskItem.configure({ nested: true }),
+            Subscript,
+            Superscript,
+            CharacterCount,
+            Typography,
+        ],
+        content: initialContent,
+        onUpdate({ editor }) {
+            document.getElementById('content-input').value = editor.getHTML();
+            updateCharCount(editor);
+        },
+    });
+} catch (err) {
+    console.error('TipTap 编辑器初始化失败:', err);
+    if (editorElement) {
+        editorElement.innerHTML = '<div class="editor-error">编辑器加载失败，请刷新页面重试</div>';
+    }
+}
 
 function updateCharCount(ed) {
     const el = document.getElementById('editor-char-count');
@@ -61,16 +71,20 @@ function updateCharCount(ed) {
 }
 
 // 初始化时同步一次
-document.getElementById('content-input').value = editor.getHTML();
-updateCharCount(editor);
+if (editor) {
+    document.getElementById('content-input').value = editor.getHTML();
+    updateCharCount(editor);
+}
 
 // 表单提交时确保最新内容
-document.querySelectorAll('form').forEach(form => {
-    form.addEventListener('submit', () => {
-        const input = document.getElementById('content-input');
-        if (input) input.value = editor.getHTML();
+if (editor) {
+    document.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', () => {
+            const input = document.getElementById('content-input');
+            if (input) input.value = editor.getHTML();
+        });
     });
-});
+}
 
 // ── 图片上传 ──
 
@@ -87,7 +101,7 @@ async function uploadImage(file) {
 
 // 编辑器拖拽上传
 const editorEl = document.getElementById('editor');
-if (editorEl) {
+if (editorEl && editor) {
     editorEl.addEventListener('drop', async (e) => {
         const files = e.dataTransfer?.files;
         if (files?.length && files[0].type.startsWith('image/')) {
@@ -126,7 +140,7 @@ if (editorEl) {
 
 // 工具栏按钮绑定
 const toolbar = document.getElementById('editor-toolbar');
-if (toolbar) {
+if (toolbar && editor) {
     toolbar.querySelectorAll('button[data-cmd]').forEach(btn => {
         btn.addEventListener('click', () => {
             const cmd = btn.dataset.cmd;
@@ -414,4 +428,84 @@ if (coverInput && coverPreview && coverPreviewImg) {
             coverPreview.style.display = 'none';
         }
     });
+}
+
+// ── 自动保存草稿（仅新建文章时启用）──
+
+const postForm = document.getElementById('post-form');
+const isNewPost = postForm && postForm.getAttribute('action') === '/admin/posts';
+
+if (isNewPost && editor) {
+    let draftId = null;
+    let saveTimer = null;
+    let isSaving = false;
+    const saveStatusEl = document.getElementById('auto-save-status');
+
+    function setStatus(msg, isError) {
+        if (!saveStatusEl) return;
+        saveStatusEl.textContent = msg;
+        saveStatusEl.style.color = isError ? 'var(--c-danger)' : 'var(--c-text-secondary)';
+    }
+
+    async function doAutosave() {
+        if (isSaving) return;
+        const title = document.querySelector('input[name="title"]')?.value || '';
+        const content = document.getElementById('content-input')?.value || '';
+        if (!title && !content) return;
+
+        isSaving = true;
+        setStatus('保存中...');
+        try {
+            const body = {
+                title: title || '(无标题草稿)',
+                content,
+                tags: document.getElementById('tags-input')?.value || '',
+                category: document.getElementById('category-input')?.value || '',
+                cover_image: document.getElementById('cover-input')?.value || '',
+                excerpt: document.querySelector('textarea[name="excerpt"]')?.value || '',
+                slug: document.querySelector('input[name="slug"]')?.value || '',
+            };
+
+            let resp;
+            if (!draftId) {
+                resp = await fetch('/admin/posts/autosave', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    draftId = data.id;
+                    if (postForm) postForm.setAttribute('action', '/admin/posts/' + draftId);
+                    setStatus('草稿已保存');
+                } else {
+                    setStatus('保存失败', true);
+                }
+            } else {
+                resp = await fetch('/admin/posts/' + draftId + '/autosave', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (resp.ok) {
+                    setStatus('草稿已保存 ' + new Date().toLocaleTimeString());
+                } else {
+                    setStatus('保存失败', true);
+                }
+            }
+        } catch {
+            setStatus('网络错误，保存失败', true);
+        } finally {
+            isSaving = false;
+        }
+    }
+
+    function scheduleAutosave() {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(doAutosave, 3000);
+    }
+
+    document.querySelector('input[name="title"]')?.addEventListener('input', scheduleAutosave);
+    editor.on('update', scheduleAutosave);
+    setInterval(doAutosave, 30000);
 }

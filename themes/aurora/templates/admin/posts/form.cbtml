@@ -16,6 +16,7 @@ slot editor_content
           div.editor-wrap
             include partials/editor-toolbar
             div#editor.editor-content
+              div.editor-loading 编辑器加载中...
 
         div.editor-sidebar
           div.card
@@ -92,6 +93,7 @@ slot editor_content
           div.editor-wrap
             include partials/editor-toolbar
             div#editor.editor-content
+              div.editor-loading 编辑器加载中...
 
         div.editor-sidebar
           div.card
@@ -107,6 +109,7 @@ slot editor_content
                 label.form-label Slug（留空自动生成）
                 input.form-input [type="text"] [name="slug"]
               button.btn.btn-primary [type="submit"] [style="width:100%;"] 创建文章
+              span#auto-save-status.form-hint [style="display:block;margin-top:8px;text-align:center;font-size:0.85em;"]
 
           div.card
             div.card-header

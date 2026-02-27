@@ -793,6 +793,12 @@ a:hover {
     outline: none;
 }
 
+.editor-content {
+    min-height: 400px;
+    background: var(--c-bg-card);
+    cursor: text;
+}
+
 .editor-content .ProseMirror {
     min-height: 400px;
     padding: 20px;
@@ -906,6 +912,24 @@ a:hover {
 .editor-content .ProseMirror a {
     color: var(--c-brand);
     text-decoration: underline;
+}
+
+.editor-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    color: var(--c-text-secondary);
+    font-size: 14px;
+}
+
+.editor-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    color: var(--c-danger);
+    font-size: 14px;
 }
 
 .media-picker-modal {

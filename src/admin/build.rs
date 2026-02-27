@@ -2,12 +2,14 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Html;
+use minijinja::context;
 use sqlx::Row;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use crate::admin::layout::{admin_page_with_script, format_datetime, html_escape, PageContext};
+use crate::admin::layout::{format_datetime, html_escape};
+use crate::admin::template::{build_admin_context, render_admin};
 use crate::build::events::BuildEvent;
 use crate::state::AppState;
 
@@ -29,138 +31,46 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
     .await
     .unwrap_or_default();
 
-    let mut table_rows = String::new();
-    for row in &rows {
-        let badge = match row.status.as_str() {
-            "success" => r#"<span class="badge badge-success">成功</span>"#,
-            "failed" => r#"<span class="badge badge-danger">失败</span>"#,
-            _ => r#"<span class="badge badge-warning">进行中</span>"#,
-        };
-        let duration = row
-            .duration_ms
-            .map(|d| format!("{d}ms"))
-            .unwrap_or_else(|| "-".to_string());
-        let finished = row.finished_at.as_deref().unwrap_or("-");
-        let error_html = row
-            .error
-            .as_deref()
-            .map(|e| format!(r#"<span class="badge badge-danger" title="{}">{}</span>"#, html_escape(e), html_escape(&e.chars().take(80).collect::<String>())))
-            .unwrap_or_default();
-
-        table_rows.push_str(&format!(
-            r#"<tr>
-                <td>{started_at}</td>
-                <td>{trigger}</td>
-                <td>{badge}</td>
-                <td>{duration}</td>
-                <td>{finished}</td>
-                <td>{error_html}</td>
-            </tr>"#,
-            started_at = format_datetime(&row.started_at),
-            trigger = html_escape(&row.trigger),
-            badge = badge,
-            duration = duration,
-            finished = if finished == "-" { "-".to_string() } else { format_datetime(finished) },
-            error_html = error_html,
-        ));
-    }
-
-    let body = format!(
-        r#"<div class="page-header">
-            <h1 class="page-title">构建管理</h1>
-            <div class="actions">
-                <div id="build-status"></div>
-                <button type="button" id="trigger-build-btn" class="btn btn-success">触发构建</button>
-            </div>
-        </div>
-        <div class="table-wrapper">
-            <table>
-                <thead><tr><th>开始时间</th><th>触发方式</th><th>状态</th><th>耗时</th><th>完成时间</th><th>错误</th></tr></thead>
-                <tbody id="build-tbody">{table_rows}</tbody>
-            </table>
-        </div>"#,
-        table_rows = table_rows,
-    );
-
-    let script = r#"
-        (function() {
-            var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            var ws = new WebSocket(protocol + '//' + location.host + '/admin/build/ws');
-            var statusEl = document.getElementById('build-status');
-            var btn = document.getElementById('trigger-build-btn');
-            var tbody = document.getElementById('build-tbody');
-
-            function pad(n) { return n < 10 ? '0' + n : '' + n; }
-            function fmtTime(d) {
-                return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
-                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    let builds: Vec<minijinja::Value> = rows
+        .iter()
+        .map(|row| {
+            let duration = row
+                .duration_ms
+                .map(|d| format!("{d}ms"))
+                .unwrap_or_else(|| "-".to_string());
+            let finished = row
+                .finished_at
+                .as_deref()
+                .map(|f| if f == "-" { "-".to_string() } else { format_datetime(f) })
+                .unwrap_or_else(|| "-".to_string());
+            let error_full = row.error.as_deref().unwrap_or("");
+            let error_short: String = error_full.chars().take(80).collect();
+            context! {
+                started_at => format_datetime(&row.started_at),
+                trigger => html_escape(&row.trigger),
+                status => &row.status,
+                duration => duration,
+                finished_at => finished,
+                error => if error_short.is_empty() { None } else { Some(error_short) },
+                error_full => html_escape(error_full),
             }
-            function escHtml(s) {
-                var d = document.createElement('div');
-                d.textContent = s;
-                return d.innerHTML;
-            }
+        })
+        .collect();
 
-            btn.addEventListener('click', function() {
-                btn.disabled = true;
-                btn.textContent = '构建中...';
-                fetch('/admin/build', { method: 'POST' }).catch(function() {
-                    btn.disabled = false;
-                    btn.textContent = '触发构建';
-                    showToast('触发构建请求失败', 'error');
-                });
-            });
-
-            var lastTrigger = 'manual';
-            ws.onmessage = function(e) {
-                var event = JSON.parse(e.data);
-                if (event.type === 'Started') {
-                    lastTrigger = event.trigger || 'manual';
-                    statusEl.innerHTML = '<span class="badge badge-warning">构建中...</span>';
-                    btn.disabled = true;
-                    btn.textContent = '构建中...';
-                } else if (event.type === 'Finished') {
-                    statusEl.innerHTML = '<span class="badge badge-success">完成: '
-                        + event.total_pages + ' 页, '
-                        + event.rebuilt + ' 重建, '
-                        + event.cached + ' 缓存, '
-                        + event.total_ms + 'ms</span>';
-                    btn.disabled = false;
-                    btn.textContent = '触发构建';
-                    var now = fmtTime(new Date());
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = '<td>' + now + '</td>'
-                        + '<td>' + escHtml(lastTrigger) + '</td>'
-                        + '<td><span class="badge badge-success">成功</span></td>'
-                        + '<td>' + event.total_ms + 'ms</td>'
-                        + '<td>' + now + '</td>'
-                        + '<td></td>';
-                    tbody.insertBefore(tr, tbody.firstChild);
-                } else if (event.type === 'Failed') {
-                    statusEl.innerHTML = '<span class="badge badge-danger">失败: ' + escHtml(event.error) + '</span>';
-                    btn.disabled = false;
-                    btn.textContent = '触发构建';
-                    var now = fmtTime(new Date());
-                    var errMsg = (event.error || '').substring(0, 80);
-                    var tr = document.createElement('tr');
-                    tr.innerHTML = '<td>' + now + '</td>'
-                        + '<td>' + escHtml(lastTrigger) + '</td>'
-                        + '<td><span class="badge badge-danger">失败</span></td>'
-                        + '<td>-</td>'
-                        + '<td>' + now + '</td>'
-                        + '<td><span class="badge badge-danger">' + escHtml(errMsg) + '</span></td>';
-                    tbody.insertBefore(tr, tbody.firstChild);
-                }
-            };
-        })();
-    "#;
-
-    let ctx = PageContext {
-        site_title: crate::admin::settings::get_site_title(&state).await,
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    let ctx = context! {
+        builds => builds,
+        ..build_admin_context(
+            "构建管理",
+            "/admin/build",
+            &crate::admin::settings::get_site_title(&state).await,
+            &state.plugin_admin_pages,
+        )
     };
 
-    Html(admin_page_with_script("构建管理", "/admin/build", &body, script, &ctx))
+    match render_admin(&state.admin_env, "build.cbtml", ctx) {
+        Ok(html) => Html(html),
+        Err(e) => Html(format!("模板渲染错误: {e:#}")),
+    }
 }
 
 /// 核心构建逻辑：防抖 + 互斥锁 + 预取数据 + 执行构建 + 记录历史

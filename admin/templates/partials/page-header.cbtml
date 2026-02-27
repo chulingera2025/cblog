@@ -1,0 +1,11 @@
+if back_url
+  a.page-back [href="{{ back_url }}"]
+    raw svg_icon("arrow-left")
+    span 返回
+end
+div.page-header
+  h1.page-title {{ page_title }}
+  if header_actions
+    div
+      raw header_actions
+  end

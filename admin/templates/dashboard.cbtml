@@ -1,0 +1,35 @@
+extends base
+
+slot content
+  include partials/page-header
+  div.stat-grid
+    div.stat-card
+      div.stat-value {{ total_posts }}
+      div.stat-label 文章总数
+    div.stat-card
+      div.stat-value {{ published_posts }}
+      div.stat-label 已发布文章
+    div.stat-card
+      div.stat-value {{ total_pages }}
+      div.stat-label 页面总数
+    div.stat-card
+      div.stat-value {{ total_media }}
+      div.stat-label 媒体文件
+  div.card
+    div.card-header
+      h2.card-title 最近文章
+    table
+      thead
+        tr
+          th 标题
+          th 状态
+          th 更新时间
+      tbody
+        for post in recent_posts
+          tr
+            td
+              a [href="/admin/posts/{{ post.id }}"] {{ post.title }}
+            td
+              span.badge.{{ post.badge_class }} {{ post.status_label }}
+            td {{ post.updated_at }}
+        end

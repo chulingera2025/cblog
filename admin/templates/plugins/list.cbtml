@@ -1,0 +1,40 @@
+extends base
+
+slot content
+  include partials/page-header
+  p.form-hint [style="margin-bottom:20px;"] 管理已安装的插件，启用或禁用插件功能。
+  if plugins
+    for plugin in plugins
+      div.card [style="margin-bottom:12px;"]
+        div.card-body [style="display:flex;justify-content:space-between;align-items:center;"]
+          div
+            div
+              strong {{ plugin.name }}
+              if plugin.version
+                | &nbsp;
+                span.badge.badge-neutral v{{ plugin.version }}
+              end
+              | &nbsp;
+              if plugin.is_enabled
+                span.badge.badge-success 已启用
+              else
+                span.badge.badge-neutral 未启用
+              end
+            if plugin.description
+              p.form-hint {{ plugin.description }}
+            end
+          div.actions
+            form [method="POST"] [action="/admin/plugins/toggle"]
+              input [type="hidden"] [name="plugin_name"] [value="{{ plugin.name }}"]
+              if plugin.is_enabled
+                button.btn.btn-danger.btn-sm [type="submit"] 禁用
+              else
+                button.btn.btn-primary.btn-sm [type="submit"] 启用
+              end
+            if plugin.is_enabled
+              a.btn.btn-secondary.btn-sm [href="/admin/plugins/{{ plugin.name }}"] 设置
+            end
+  else
+    div.empty-state
+      p 暂无可用插件。将插件放入 plugins/ 目录即可。
+  end

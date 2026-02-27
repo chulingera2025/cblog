@@ -117,8 +117,17 @@ fn build_cookie(name: &str, value: &str, max_age_secs: i64) -> String {
 
 // ── 路由处理 ──
 
-pub async fn login_page() -> Html<String> {
-    Html(LOGIN_HTML.to_owned())
+pub async fn login_page(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Html<String> {
+    let show_error = params.contains_key("error");
+    let ctx = minijinja::context! {
+        show_error => show_error,
+    };
+    let html = crate::admin::template::render_admin(&state.admin_env, "login.cbtml", ctx)
+        .unwrap_or_else(|e| format!("模板渲染失败: {e}"));
+    Html(html)
 }
 
 pub async fn login_submit(
@@ -345,49 +354,3 @@ fn extract_token_from_request<B>(req: &Request<B>, cookie_name: &str) -> Option<
 fn redirect_to_login() -> Response {
     Redirect::to("/admin/login").into_response()
 }
-
-// ── 登录页 HTML ──
-
-const LOGIN_HTML: &str = r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登录 - cblog</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#F6F9FC;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.login-container{width:100%;max-width:400px;padding:0 1rem}
-.login-card{background:#fff;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.07),0 4px 12px rgba(0,0,0,.05);padding:2.5rem 2rem}
-.login-brand{font-size:1.6rem;font-weight:700;color:#0A2540;text-align:center;margin-bottom:.25rem}
-.login-subtitle{font-size:.95rem;color:#697386;text-align:center;margin-bottom:1.75rem}
-.error-msg{background:#FFF0F2;color:#DF1B41;font-size:.85rem;text-align:center;padding:.6rem .8rem;border-radius:6px;margin-bottom:1.25rem}
-.form-group{margin-bottom:1.25rem}
-.form-group label{display:block;font-size:.875rem;font-weight:500;color:#3C4257;margin-bottom:.4rem}
-.form-group input{width:100%;padding:.65rem .75rem;border:1px solid #E0E6EB;border-radius:6px;font-size:.95rem;color:#1A1F36;outline:none;transition:border .15s,box-shadow .15s}
-.form-group input:focus{border-color:#635BFF;box-shadow:0 0 0 3px rgba(99,91,255,.12)}
-button[type=submit]{width:100%;padding:.7rem;background:#635BFF;color:#fff;border:none;border-radius:6px;font-size:.95rem;font-weight:600;cursor:pointer;transition:background .15s;margin-top:.25rem}
-button[type=submit]:hover{background:#5851db}
-</style>
-</head>
-<body>
-<div class="login-container">
-    <div class="login-card">
-        <div class="login-brand">cblog</div>
-        <p class="login-subtitle">登录管理后台</p>
-        <script>if(location.search.includes('error=1'))document.write('<div class="error-msg">用户名或密码错误</div>')</script>
-        <form method="post" action="/admin/login">
-            <div class="form-group">
-                <label for="username">用户名</label>
-                <input type="text" id="username" name="username" required autofocus>
-            </div>
-            <div class="form-group">
-                <label for="password">密码</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">登录</button>
-        </form>
-    </div>
-</div>
-</body>
-</html>"#;

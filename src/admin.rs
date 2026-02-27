@@ -22,6 +22,7 @@ pub mod posts;
 pub mod profile;
 pub mod settings;
 pub mod tags;
+pub mod template;
 pub mod theme;
 
 pub fn router(state: AppState) -> Router {
@@ -104,6 +105,11 @@ pub fn router(state: AppState) -> Router {
         state.project_root.join(&state.config.media.upload_dir),
     );
 
+    // 后台静态资源（CSS 等）
+    let admin_static = tower_http::services::ServeDir::new(
+        state.project_root.join("admin/static"),
+    );
+
     // 静态站点服务（build 输出目录作为 fallback）
     let static_site = tower_http::services::ServeDir::new(
         state.project_root.join(&state.config.build.output_dir),
@@ -115,6 +121,7 @@ pub fn router(state: AppState) -> Router {
         .merge(public_routes)
         .merge(protected_routes)
         .nest_service("/media", media_service)
+        .nest_service("/admin/static", admin_static)
         .fallback_service(static_site)
         // 安装检测中间件应用于所有路由
         .layer(middleware::from_fn_with_state(

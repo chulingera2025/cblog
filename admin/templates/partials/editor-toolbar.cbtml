@@ -1,0 +1,38 @@
+div.editor-toolbar#editor-toolbar
+  div.toolbar-group
+    select#tb-heading
+      option [value="p"] 正文
+      option [value="1"] 标题 1
+      option [value="2"] 标题 2
+      option [value="3"] 标题 3
+  div.toolbar-divider
+  div.toolbar-group
+    button [type="button"] [data-cmd="bold"] [title="粗体"]
+      b B
+    button [type="button"] [data-cmd="italic"] [title="斜体"]
+      i I
+    button [type="button"] [data-cmd="underline"] [title="下划线"]
+      u U
+    button [type="button"] [data-cmd="strike"] [title="删除线"]
+      s S
+  div.toolbar-divider
+  div.toolbar-group
+    button [type="button"] [data-cmd="bulletList"] [title="无序列表"] •
+    button [type="button"] [data-cmd="orderedList"] [title="有序列表"] 1.
+    button [type="button"] [data-cmd="taskList"] [title="任务列表"] ☑
+    button [type="button"] [data-cmd="blockquote"] [title="引用"] ❝
+    button [type="button"] [data-cmd="hr"] [title="分隔线"] —
+  div.toolbar-divider
+  div.toolbar-group
+    button [type="button"] [data-cmd="link"] [title="链接"] 🔗
+    button [type="button"] [data-cmd="image"] [title="图片"] 🖼
+    button [type="button"] [data-cmd="table"] [title="表格"] ☰
+  div.toolbar-divider
+  div.toolbar-group
+    button [type="button"] [data-cmd="alignLeft"] [title="左对齐"] ⫷
+    button [type="button"] [data-cmd="alignCenter"] [title="居中"] ≡
+    button [type="button"] [data-cmd="alignRight"] [title="右对齐"] ⫸
+  div.toolbar-divider
+  div.toolbar-group
+    button [type="button"] [data-cmd="undo"] [title="撤销"] ↩
+    button [type="button"] [data-cmd="redo"] [title="重做"] ↪

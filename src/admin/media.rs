@@ -1,9 +1,10 @@
 use axum::extract::{Multipart, Path, Query, State};
 use axum::response::{Html, IntoResponse, Json, Redirect};
+use minijinja::context;
 use serde::{Deserialize, Serialize};
 use std::path;
 
-use crate::admin::layout::{admin_page, html_escape, svg_icon, PageContext};
+use crate::admin::template::{build_admin_context, render_admin};
 use crate::media::{process, upload};
 use crate::state::AppState;
 
@@ -47,125 +48,70 @@ pub async fn list_media(
     .await
     .unwrap_or_default();
 
-    let mut cards = String::new();
-    for item in &rows {
-        let is_image = item.mime_type.starts_with("image/");
-        let preview = if is_image {
-            let src = item.thumb_url.as_deref().unwrap_or(&item.url);
-            format!(
-                r#"<img src="{}" alt="{}" loading="lazy">"#,
-                html_escape(src),
-                html_escape(&item.original_name)
-            )
-        } else {
-            r#"<div class="file-icon">&#128196;</div>"#.to_string()
-        };
+    let has_next = rows.len() as u32 == per_page;
+    let has_prev = page > 1;
 
-        let size_display = upload::format_size(item.size_bytes as usize);
-        let date = crate::admin::layout::format_datetime(&item.uploaded_at);
+    let media_items: Vec<minijinja::Value> = rows
+        .iter()
+        .map(|item| {
+            let is_image = item.mime_type.starts_with("image/");
+            let thumb_url = if is_image {
+                item.thumb_url.as_deref().unwrap_or(&item.url).to_string()
+            } else {
+                String::new()
+            };
+            let size_display = upload::format_size(item.size_bytes as usize);
+            let date = crate::admin::layout::format_datetime(&item.uploaded_at);
+            context! {
+                id => &item.id,
+                original_name => &item.original_name,
+                is_image => is_image,
+                thumb_url => thumb_url,
+                url => &item.url,
+                size_display => size_display,
+                date => date,
+            }
+        })
+        .collect();
 
-        cards.push_str(&format!(
-            r#"<div class="media-card">
-                {preview}
-                <div class="info">
-                    <div class="filename" title="{original_name}">{original_name}</div>
-                    <div class="meta">{size} &middot; {date}</div>
-                    <div class="actions">
-                        <a href="{url}" target="_blank" class="btn btn-secondary btn-sm">查看</a>
-                        <form method="POST" action="/admin/media/{id}/delete" onsubmit="confirmAction('删除文件', '确定要删除此文件吗？', this); return false;">
-                            <button type="submit" class="btn btn-danger btn-sm">删除</button>
-                        </form>
-                    </div>
-                </div>
-            </div>"#,
-            preview = preview,
-            original_name = html_escape(&item.original_name),
-            size = size_display,
-            date = date,
-            url = html_escape(&item.url),
-            id = item.id,
-        ));
+    let ctx = context! {
+        media_items => media_items,
+        has_prev => has_prev,
+        has_next => has_next,
+        prev_page => if has_prev { page - 1 } else { 1 },
+        next_page => page + 1,
+        ..build_admin_context(
+            "媒体库",
+            "/admin/media",
+            &crate::admin::settings::get_site_title(&state).await,
+            &state.plugin_admin_pages,
+        )
+    };
+
+    match render_admin(&state.admin_env, "media/list.cbtml", ctx) {
+        Ok(html) => Html(html),
+        Err(e) => Html(format!("模板渲染错误: {e:#}")),
     }
-
-    let pagination = {
-        let mut p = String::new();
-        if page > 1 {
-            p.push_str(&format!(
-                r#"<a href="/admin/media?page={}" class="btn btn-secondary btn-sm">上一页</a>"#,
-                page - 1
-            ));
-        }
-        if rows.len() as u32 == per_page {
-            p.push_str(&format!(
-                r#"<a href="/admin/media?page={}" class="btn btn-secondary btn-sm">下一页</a>"#,
-                page + 1
-            ));
-        }
-        p
-    };
-
-    let body = format!(
-        r#"<div class="page-header">
-            <h1 class="page-title">媒体库</h1>
-            <a href="/admin/media/upload" class="btn btn-primary">{icon} 上传文件</a>
-        </div>
-        <div class="media-grid">{cards}</div>
-        <div class="pagination">
-            {pagination}
-        </div>"#,
-        icon = svg_icon("upload"),
-        cards = cards,
-        pagination = pagination,
-    );
-
-    let ctx = PageContext {
-        site_title: crate::admin::settings::get_site_title(&state).await,
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
-    };
-
-    Html(admin_page("媒体库", "/admin/media", &body, &ctx))
 }
 
 pub async fn upload_page(State(state): State<AppState>) -> Html<String> {
-    let body = format!(
-        r#"<a href="/admin/media" class="page-back">{icon} 返回媒体库</a>
-        <div class="page-header">
-            <h1 class="page-title">上传文件</h1>
-        </div>
-        <div class="card">
-            <div class="card-body">
-                <form method="POST" action="/admin/media/upload" enctype="multipart/form-data">
-                    <div class="form-group">
-                        <label class="form-label">选择文件</label>
-                        <input type="file" name="file" required accept="image/*" class="form-input">
-                    </div>
-                    <div>
-                        <button type="submit" class="btn btn-primary">上传</button>
-                        <a href="/admin/media" class="btn btn-secondary">返回媒体库</a>
-                    </div>
-                </form>
-            </div>
-        </div>"#,
-        icon = svg_icon("arrow-left"),
+    let ctx = build_admin_context(
+        "上传文件",
+        "/admin/media",
+        &crate::admin::settings::get_site_title(&state).await,
+        &state.plugin_admin_pages,
     );
 
-    let ctx = PageContext {
-        site_title: crate::admin::settings::get_site_title(&state).await,
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
-    };
-
-    Html(admin_page("上传文件", "/admin/media", &body, &ctx))
+    match render_admin(&state.admin_env, "media/upload.cbtml", ctx) {
+        Ok(html) => Html(html),
+        Err(e) => Html(format!("模板渲染错误: {e:#}")),
+    }
 }
 
 pub async fn upload_media(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
-    let ctx = PageContext {
-        site_title: crate::admin::settings::get_site_title(&state).await,
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
-    };
-
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
         if name != "file" {
@@ -181,20 +127,20 @@ pub async fn upload_media(
         let data = match field.bytes().await {
             Ok(d) => d,
             Err(e) => {
-                return upload_error_page(&format!("读取文件失败：{e}"), &ctx);
+                return render_upload_error(&state, &format!("读取文件失败：{e}"));
             }
         };
 
         let config = &state.config.media;
 
         if let Err(e) = upload::validate_upload(&data, &content_type, config) {
-            return upload_error_page(&e.to_string(), &ctx);
+            return render_upload_error(&state, &e.to_string());
         }
 
         let processed = match process::process_image(&data, config) {
             Ok(p) => p,
             Err(e) => {
-                return upload_error_page(&format!("图片处理失败：{e}"), &ctx);
+                return render_upload_error(&state, &format!("图片处理失败：{e}"));
             }
         };
 
@@ -218,7 +164,7 @@ pub async fn upload_media(
             tokio::fs::create_dir_all(parent).await.ok();
         }
         if let Err(e) = tokio::fs::write(&media_path, &processed.data).await {
-            return upload_error_page(&format!("写入文件失败：{e}"), &ctx);
+            return render_upload_error(&state, &format!("写入文件失败：{e}"));
         }
 
         // 同时写入 public 目录以供静态访问
@@ -279,7 +225,7 @@ pub async fn upload_media(
         return Redirect::to("/admin/media").into_response();
     }
 
-    upload_error_page("未找到上传文件", &ctx)
+    render_upload_error(&state, "未找到上传文件")
 }
 
 pub async fn delete_media(
@@ -481,21 +427,22 @@ pub async fn api_media_list(State(state): State<AppState>) -> impl IntoResponse 
     Json(items)
 }
 
-fn upload_error_page(message: &str, ctx: &PageContext) -> axum::response::Response {
-    let body = format!(
-        r#"<a href="/admin/media/upload" class="page-back">{icon} 返回上传</a>
-        <div class="page-header">
-            <h1 class="page-title">上传失败</h1>
-        </div>
-        <div class="alert alert-error">{msg}</div>
-        <div>
-            <a href="/admin/media/upload" class="btn btn-primary">重新上传</a>
-            <a href="/admin/media" class="btn btn-secondary">返回媒体库</a>
-        </div>"#,
-        icon = svg_icon("arrow-left"),
-        msg = html_escape(message),
+fn render_upload_error(state: &AppState, message: &str) -> axum::response::Response {
+    let base = build_admin_context(
+        "上传失败",
+        "/admin/media",
+        &state.config.site.title,
+        &state.plugin_admin_pages,
     );
-    Html(admin_page("上传失败", "/admin/media", &body, ctx)).into_response()
+    let ctx = context! {
+        error_message => message,
+        ..base
+    };
+
+    match render_admin(&state.admin_env, "media/error.cbtml", ctx) {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => Html(format!("模板渲染错误: {e:#}")).into_response(),
+    }
 }
 
 /// 缩略图路径：在文件名前加 thumb_ 前缀

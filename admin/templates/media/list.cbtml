@@ -1,0 +1,32 @@
+extends base
+slot content
+  div.page-header
+    h1.page-title 媒体库
+    a.btn.btn-primary [href="/admin/media/upload"]
+      raw svg_icon("upload")
+      span 上传文件
+  div.media-grid
+    for item in media_items
+      div.media-card
+        if item.is_image
+          img [src="{{ item.thumb_url }}"] [alt="{{ item.original_name }}"] [loading="lazy"]
+        else
+          div.file-icon &#128196;
+        end
+        div.info
+          div.filename [title="{{ item.original_name }}"] {{ item.original_name }}
+          div.meta {{ item.size_display }} &middot; {{ item.date }}
+          div.actions
+            a.btn.btn-secondary.btn-sm [href="{{ item.url }}"] [target="_blank"] 查看
+            form [method="POST"] [action="/admin/media/{{ item.id }}/delete"] [onsubmit="confirmAction('删除文件', '确定要删除此文件吗？', this); return false;"]
+              button.btn.btn-danger.btn-sm [type="submit"] 删除
+    end
+  if has_prev or has_next
+    div.pagination
+      if has_prev
+        a.btn.btn-secondary.btn-sm [href="/admin/media?page={{ prev_page }}"] 上一页
+      end
+      if has_next
+        a.btn.btn-secondary.btn-sm [href="/admin/media?page={{ next_page }}"] 下一页
+      end
+  end

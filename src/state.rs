@@ -3,6 +3,7 @@ use crate::admin::settings::SiteSettings;
 use crate::build::events::BuildEvent;
 use crate::config::SiteConfig;
 use anyhow::Result;
+use minijinja::Environment;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -29,6 +30,8 @@ pub struct AppState {
     pub site_settings: Arc<tokio::sync::RwLock<SiteSettings>>,
     /// 安装状态缓存，避免每次请求查数据库
     pub installed: Arc<AtomicBool>,
+    /// 后台模板渲染环境
+    pub admin_env: Arc<Environment<'static>>,
 }
 
 impl AppState {
@@ -70,6 +73,9 @@ impl AppState {
             .unwrap_or((0,));
         let installed = user_count.0 > 0;
 
+        // 构建后台模板渲染环境
+        let admin_env = crate::admin::template::build_admin_env(&project_root, &config.site.url)?;
+
         Ok(Self {
             db: pool,
             config: Arc::new(config),
@@ -81,6 +87,7 @@ impl AppState {
             build_mutex: Arc::new(tokio::sync::Mutex::new(())),
             site_settings: Arc::new(tokio::sync::RwLock::new(site_settings)),
             installed: Arc::new(AtomicBool::new(installed)),
+            admin_env: Arc::new(admin_env),
         })
     }
 }
@@ -94,7 +101,6 @@ fn collect_plugin_admin_pages(project_root: &std::path::Path, config: &SiteConfi
         if let Ok(toml) = load_plugin_toml(&toml_path) {
             for page in &toml.admin.pages {
                 pages.push(PluginSidebarEntry {
-                    plugin_name: name.clone(),
                     label: page.label.clone(),
                     href: format!("/admin/ext/{}/{}", name, page.slug),
                     icon: page.icon.clone(),

@@ -1,0 +1,22 @@
+extends base
+
+slot content
+  include partials/page-header
+  div.card
+    div.card-header
+      span.card-title 修改密码
+    div.card-body
+      form#password-form [method="POST"] [action="/admin/profile/password"]
+        div.form-group
+          label.form-label 当前密码
+          input.form-input [type="password"] [name="old_password"] [required] [autocomplete="current-password"]
+        div.form-group
+          label.form-label 新密码
+          input.form-input [type="password"] [name="new_password"] [required] [autocomplete="new-password"] [minlength="6"]
+          div.form-hint 密码长度至少 6 个字符
+        div.form-group
+          label.form-label 确认新密码
+          input.form-input [type="password"] [name="confirm_password"] [required] [autocomplete="new-password"]
+        button.btn.btn-primary [type="submit"]
+          raw svg_icon("key")
+          |  更新密码

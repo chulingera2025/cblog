@@ -1,0 +1,176 @@
+extends base
+
+slot content
+  include partials/page-header
+  if error_message
+    div.alert.alert-error {{ error_message }}
+  else
+    p.form-hint [style="margin-bottom:20px;"]
+      | 当前主题：
+      strong {{ current_theme }}
+      if theme_version
+        | &nbsp;
+        span.badge.badge-info v{{ theme_version }}
+      end
+
+    form [method="POST"] [action="/admin/theme"]
+      for group in config_groups
+        div.card [style="margin-bottom:16px;"]
+          div.card-header
+            span.card-title {{ group.name }}
+          div.card-body
+            for field in group.fields
+              if field.field_type == "boolean"
+                if field.depends_on
+                  div.form-group [data-depends-on="{{ field.depends_on }}"]
+                    label.form-check
+                      if field.checked
+                        input [type="checkbox"] [name="{{ field.key }}"] [value="true"] [checked]
+                      else
+                        input [type="checkbox"] [name="{{ field.key }}"] [value="true"]
+                      end
+                      | {{ field.label }}
+                    if field.description
+                      div.form-hint {{ field.description }}
+                    end
+                else
+                  div.form-group
+                    label.form-check
+                      if field.checked
+                        input [type="checkbox"] [name="{{ field.key }}"] [value="true"] [checked]
+                      else
+                        input [type="checkbox"] [name="{{ field.key }}"] [value="true"]
+                      end
+                      | {{ field.label }}
+                    if field.description
+                      div.form-hint {{ field.description }}
+                    end
+                end
+              else
+                if field.depends_on
+                  div.form-group [data-depends-on="{{ field.depends_on }}"]
+                    label.form-label {{ field.label }}
+                    if field.field_type == "color"
+                      input.form-input [type="color"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+                    else if field.field_type == "number"
+                      if field.min_attr
+                        if field.max_attr
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"] [min="{{ field.min_attr }}"] [max="{{ field.max_attr }}"]
+                        else
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"] [min="{{ field.min_attr }}"]
+                        end
+                      else
+                        if field.max_attr
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"] [max="{{ field.max_attr }}"]
+                        else
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+                        end
+                      end
+                    else if field.field_type == "select" or field.field_type == "font_select"
+                      select.form-select [name="{{ field.key }}"]
+                        for opt in field.options
+                          if opt.selected
+                            option [value="{{ opt.value }}"] [selected] {{ opt.label }}
+                          else
+                            option [value="{{ opt.value }}"] {{ opt.label }}
+                          end
+                        end
+                    else if field.field_type == "textarea"
+                      textarea.form-textarea [name="{{ field.key }}"] {{ field.value }}
+                    else if field.field_type == "richtext"
+                      textarea.form-textarea [name="{{ field.key }}"] [placeholder="支持 HTML"] {{ field.value }}
+                    else if field.field_type == "code"
+                      textarea.form-textarea.code [name="{{ field.key }}"] [placeholder="{{ field.language }}"] {{ field.value }}
+                    else if field.field_type == "image"
+                      input.form-input [type="text"] [name="{{ field.key }}"] [value="{{ field.value }}"] [placeholder="图片 URL"]
+                    else
+                      input.form-input [type="text"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+                    end
+                    if field.description
+                      div.form-hint {{ field.description }}
+                    end
+                else
+                  div.form-group
+                    label.form-label {{ field.label }}
+                    if field.field_type == "color"
+                      input.form-input [type="color"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+                    else if field.field_type == "number"
+                      if field.min_attr
+                        if field.max_attr
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"] [min="{{ field.min_attr }}"] [max="{{ field.max_attr }}"]
+                        else
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"] [min="{{ field.min_attr }}"]
+                        end
+                      else
+                        if field.max_attr
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"] [max="{{ field.max_attr }}"]
+                        else
+                          input.form-input [type="number"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+                        end
+                      end
+                    else if field.field_type == "select" or field.field_type == "font_select"
+                      select.form-select [name="{{ field.key }}"]
+                        for opt in field.options
+                          if opt.selected
+                            option [value="{{ opt.value }}"] [selected] {{ opt.label }}
+                          else
+                            option [value="{{ opt.value }}"] {{ opt.label }}
+                          end
+                        end
+                    else if field.field_type == "textarea"
+                      textarea.form-textarea [name="{{ field.key }}"] {{ field.value }}
+                    else if field.field_type == "richtext"
+                      textarea.form-textarea [name="{{ field.key }}"] [placeholder="支持 HTML"] {{ field.value }}
+                    else if field.field_type == "code"
+                      textarea.form-textarea.code [name="{{ field.key }}"] [placeholder="{{ field.language }}"] {{ field.value }}
+                    else if field.field_type == "image"
+                      input.form-input [type="text"] [name="{{ field.key }}"] [value="{{ field.value }}"] [placeholder="图片 URL"]
+                    else
+                      input.form-input [type="text"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+                    end
+                    if field.description
+                      div.form-hint {{ field.description }}
+                    end
+                end
+              end
+            end
+        end
+      button.btn.btn-primary [type="submit"] 保存配置
+
+    h2.page-title [style="font-size:18px;margin-top:32px;margin-bottom:12px;"] 已安装主题
+    for theme in all_themes
+      div.card [style="margin-bottom:12px;"]
+        div.card-body [style="display:flex;justify-content:space-between;align-items:center;"]
+          div
+            strong {{ theme.name }}
+            if theme.version
+              | &nbsp;
+              span.badge.badge-neutral v{{ theme.version }}
+            end
+            if theme.description
+              p.form-hint {{ theme.description }}
+            end
+          div
+            if theme.is_active
+              span.badge.badge-success 当前主题
+            else
+              form [method="POST"] [action="/admin/theme/switch"]
+                input [type="hidden"] [name="theme_name"] [value="{{ theme.name }}"]
+                button.btn.btn-primary.btn-sm [type="submit"] 切换
+            end
+  end
+
+slot extra_scripts
+  script
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('[data-depends-on]').forEach(function(el) {
+            var depKey = el.getAttribute('data-depends-on');
+            var checkbox = document.querySelector('input[name="' + depKey + '"][type="checkbox"]');
+            if (!checkbox) return;
+            function toggle() {
+                el.style.display = checkbox.checked ? '' : 'none';
+            }
+            toggle();
+            checkbox.addEventListener('change', toggle);
+        });
+    });

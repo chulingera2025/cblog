@@ -1,0 +1,100 @@
+extends editor-base
+
+slot editor_content
+  a.page-back [href="/admin/posts"]
+    raw svg_icon("arrow-left")
+    span  返回文章列表
+  div.page-header
+    if is_edit
+      h1.page-title 编辑文章
+      div [style="display:flex;gap:8px;"]
+        if post_status == "draft"
+          form [method="POST"] [action="/admin/posts/{{ post_id }}/publish"]
+            button.btn.btn-success [type="submit"] 发布
+        else
+          form [method="POST"] [action="/admin/posts/{{ post_id }}/unpublish"]
+            button.btn.btn-secondary [type="submit"] 取消发布
+        end
+        form [method="POST"] [action="/admin/posts/{{ post_id }}/delete"] [onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;"]
+          button.btn.btn-danger [type="submit"] 删除
+    else
+      h1.page-title 新建文章
+    end
+  if is_edit
+    form [method="POST"] [action="/admin/posts/{{ post_id }}"]
+      div.form-group
+        label.form-label 标题
+        input.form-input [type="text"] [name="title"] [value="{{ post_title }}"] [required]
+      div.form-group
+        label.form-label Slug
+        input.form-input [type="text"] [name="slug"] [value="{{ post_slug }}"]
+      div.form-group
+        label.form-label 内容
+        input [type="hidden"] [name="content"] [id="content-input"]
+        div.editor-wrap
+          include partials/editor-toolbar
+          div#editor.editor-content
+      div.form-row
+        div.form-group
+          label.form-label 状态
+          select.form-select [name="status"]
+            if post_status == "draft"
+              option [value="draft"] [selected] 草稿
+              option [value="published"] 已发布
+            else
+              option [value="draft"] 草稿
+              option [value="published"] [selected] 已发布
+            end
+        div.form-group
+          label.form-label 分类
+          input.form-input [type="text"] [name="category"] [value="{{ post_category }}"]
+      div.form-row
+        div.form-group
+          label.form-label 标签（逗号分隔）
+          input.form-input [type="text"] [name="tags"] [value="{{ post_tags }}"]
+        div.form-group
+          label.form-label 封面图 URL
+          input.form-input [type="text"] [name="cover_image"] [value="{{ post_cover_image }}"]
+      div.form-group
+        label.form-label 摘要
+        input.form-input [type="text"] [name="excerpt"] [value="{{ post_excerpt }}"]
+      div.form-group
+        button.btn.btn-primary [type="submit"] 保存修改
+        a.btn.btn-secondary [href="/admin/posts"] 返回列表
+  else
+    form [method="POST"] [action="/admin/posts"]
+      div.form-group
+        label.form-label 标题
+        input.form-input [type="text"] [name="title"] [required]
+      div.form-group
+        label.form-label Slug（留空自动生成）
+        input.form-input [type="text"] [name="slug"]
+      div.form-group
+        label.form-label 内容
+        input [type="hidden"] [name="content"] [id="content-input"]
+        div.editor-wrap
+          include partials/editor-toolbar
+          div#editor.editor-content
+      div.form-row
+        div.form-group
+          label.form-label 状态
+          select.form-select [name="status"]
+            option [value="draft"] 草稿
+            option [value="published"] 已发布
+        div.form-group
+          label.form-label 分类
+          input.form-input [type="text"] [name="category"]
+      div.form-row
+        div.form-group
+          label.form-label 标签（逗号分隔）
+          input.form-input [type="text"] [name="tags"]
+        div.form-group
+          label.form-label 封面图 URL
+          input.form-input [type="text"] [name="cover_image"]
+      div.form-group
+        label.form-label 摘要
+        input.form-input [type="text"] [name="excerpt"]
+      div.form-group
+        button.btn.btn-primary [type="submit"] 创建文章
+        a.btn.btn-secondary [href="/admin/posts"] 取消
+  end

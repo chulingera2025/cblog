@@ -1,0 +1,16 @@
+extends base
+slot content
+  a.page-back [href="/admin/media"]
+    raw svg_icon("arrow-left")
+    span 返回媒体库
+  div.page-header
+    h1.page-title 上传文件
+  div.card
+    div.card-body
+      form [method="POST"] [action="/admin/media/upload"] [enctype="multipart/form-data"]
+        div.form-group
+          label.form-label 选择文件
+          input.form-input [type="file"] [name="file"] [required] [accept="image/*"]
+        div
+          button.btn.btn-primary [type="submit"] 上传
+          a.btn.btn-secondary [href="/admin/media"] 返回媒体库

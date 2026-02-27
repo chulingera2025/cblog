@@ -1,0 +1,34 @@
+extends base
+
+slot content
+  div.page-header
+    h1.page-title 页面管理
+    a.btn.btn-primary [href="/admin/pages/new"]
+      raw svg_icon("plus")
+      span  新建页面
+  div.table-wrapper
+    table
+      thead
+        tr
+          th 标题
+          th Slug
+          th 状态
+          th 模板
+          th 更新时间
+          th 操作
+      tbody
+        for page in pages
+          tr
+            td
+              a [href="/admin/pages/{{ page.id }}"] {{ page.title }}
+            td {{ page.slug }}
+            td
+              span.badge.{{ page.badge_class }} {{ page.status_label }}
+            td {{ page.template }}
+            td {{ page.updated_at }}
+            td.actions
+              a.btn.btn-secondary.btn-sm [href="/admin/pages/{{ page.id }}"] 编辑
+              form [method="POST"] [action="/admin/pages/{{ page.id }}/delete"] [style="display:inline;"] [onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;"]
+                button.btn.btn-danger.btn-sm [type="submit"] 删除
+        end
+  include partials/pagination

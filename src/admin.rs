@@ -57,10 +57,12 @@ pub fn router(state: AppState) -> Router {
         // 文章管理
         .route("/admin/posts", get(posts::list_posts).post(posts::create_post))
         .route("/admin/posts/new", get(posts::new_post_page))
+        .route("/admin/posts/autosave", post(posts::autosave_create))
         .route("/admin/posts/{id}", get(posts::edit_post_page).post(posts::update_post))
         .route("/admin/posts/{id}/delete", post(posts::delete_post))
         .route("/admin/posts/{id}/publish", post(posts::publish_post))
         .route("/admin/posts/{id}/unpublish", post(posts::unpublish_post))
+        .route("/admin/posts/{id}/autosave", post(posts::autosave_update))
         // 页面管理
         .route("/admin/pages", get(pages::list_pages).post(pages::create_page))
         .route("/admin/pages/new", get(pages::new_page_page))

@@ -1,7 +1,9 @@
 use axum::extract::{Form, Path, Query, State};
-use axum::response::{Html, Redirect};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::Json;
 use minijinja::context;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 use crate::admin::layout;
@@ -145,6 +147,7 @@ pub async fn list_posts(
         sidebar_groups => sidebar_groups,
         plugin_sidebar_items => plugin_items,
         profile_active => false,
+        site_url => crate::admin::settings::get_site_url(&state).await,
         posts => posts_ctx,
         current_status => params.status.as_deref().unwrap_or(""),
         search_query => params.search.as_deref().unwrap_or(""),
@@ -394,6 +397,118 @@ pub async fn unpublish_post(
     });
 
     Redirect::to(&format!("/admin/posts/{id}"))
+}
+
+#[derive(Deserialize)]
+pub struct AutosaveBody {
+    pub title: String,
+    pub content: String,
+    pub slug: Option<String>,
+    pub tags: Option<String>,
+    pub category: Option<String>,
+    pub cover_image: Option<String>,
+    pub excerpt: Option<String>,
+}
+
+pub async fn autosave_create(
+    State(state): State<AppState>,
+    Json(body): Json<AutosaveBody>,
+) -> Response {
+    let id = ulid::Ulid::new().to_string();
+    let slug = match body.slug.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.trim().to_string(),
+        _ => generate_slug(&body.title),
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let meta = serde_json::json!({
+        "tags": body.tags.as_deref().unwrap_or(""),
+        "category": body.category.as_deref().unwrap_or(""),
+        "cover_image": body.cover_image.as_deref().unwrap_or(""),
+        "excerpt": body.excerpt.as_deref().unwrap_or(""),
+    })
+    .to_string();
+
+    let result = sqlx::query(
+        "INSERT INTO posts (id, slug, title, content, status, created_at, updated_at, meta) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&slug)
+    .bind(&body.title)
+    .bind(&body.content)
+    .bind(&now)
+    .bind(&now)
+    .bind(&meta)
+    .execute(&state.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            sync_post_taxonomy(
+                &state.db,
+                &id,
+                body.tags.as_deref().unwrap_or(""),
+                body.category.as_deref().unwrap_or(""),
+            )
+            .await;
+            Json(serde_json::json!({ "id": id })).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn autosave_update(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<AutosaveBody>,
+) -> Response {
+    let slug = match body.slug.as_deref() {
+        Some(s) if !s.trim().is_empty() => s.trim().to_string(),
+        _ => generate_slug(&body.title),
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let meta = serde_json::json!({
+        "tags": body.tags.as_deref().unwrap_or(""),
+        "category": body.category.as_deref().unwrap_or(""),
+        "cover_image": body.cover_image.as_deref().unwrap_or(""),
+        "excerpt": body.excerpt.as_deref().unwrap_or(""),
+    })
+    .to_string();
+
+    let result = sqlx::query(
+        "UPDATE posts SET title = ?, slug = ?, content = ?, meta = ?, updated_at = ? WHERE id = ?",
+    )
+    .bind(&body.title)
+    .bind(&slug)
+    .bind(&body.content)
+    .bind(&meta)
+    .bind(&now)
+    .bind(&id)
+    .execute(&state.db)
+    .await;
+
+    match result {
+        Ok(_) => {
+            sync_post_taxonomy(
+                &state.db,
+                &id,
+                body.tags.as_deref().unwrap_or(""),
+                body.category.as_deref().unwrap_or(""),
+            )
+            .await;
+            Json(serde_json::json!({ "ok": true })).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
 }
 
 /// 同步文章的分类和标签关联表

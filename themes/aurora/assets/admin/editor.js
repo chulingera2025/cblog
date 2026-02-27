@@ -21,7 +21,8 @@ import Typography from 'https://esm.sh/@tiptap/extension-typography@2.27.2'
 
 const editorElement = document.getElementById('editor');
 const contentDataEl = document.getElementById('editor-content-data');
-const initialContent = contentDataEl ? JSON.parse(contentDataEl.textContent) : '';
+const rawContent = contentDataEl ? contentDataEl.textContent.trim() : '';
+const initialContent = rawContent || '';
 
 let editor;
 

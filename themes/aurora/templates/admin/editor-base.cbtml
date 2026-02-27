@@ -2,6 +2,6 @@ extends base
 slot content
   slot editor_content
 slot extra_scripts
-  script [type="application/json"] [id="editor-content-data"]
+  script [type="text/html"] [id="editor-content-data"]
     raw editor_initial_content
   script [type="module"] [src="/admin/static/editor.js"]

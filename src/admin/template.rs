@@ -1,6 +1,7 @@
+use crate::admin::layout::PluginSidebarEntry;
 use crate::cbtml;
 use anyhow::{Context, Result};
-use minijinja::{Environment, Value};
+use minijinja::{Environment, Value, context};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -41,6 +42,129 @@ pub fn render_admin(env: &Environment, name: &str, ctx: Value) -> Result<String>
         .render(ctx)
         .with_context(|| format!("渲染后台模板 {} 失败", name))?;
     Ok(html)
+}
+
+/// 侧边栏定义
+struct SidebarItemDef {
+    label: &'static str,
+    href: &'static str,
+    icon: &'static str,
+}
+
+struct SidebarGroupDef {
+    label: &'static str,
+    items: &'static [SidebarItemDef],
+}
+
+const SIDEBAR_GROUPS: &[SidebarGroupDef] = &[
+    SidebarGroupDef {
+        label: "",
+        items: &[SidebarItemDef {
+            label: "仪表盘",
+            href: "/admin",
+            icon: "grid",
+        }],
+    },
+    SidebarGroupDef {
+        label: "内容",
+        items: &[
+            SidebarItemDef {
+                label: "文章管理",
+                href: "/admin/posts",
+                icon: "file-text",
+            },
+            SidebarItemDef {
+                label: "页面管理",
+                href: "/admin/pages",
+                icon: "file",
+            },
+            SidebarItemDef {
+                label: "媒体库",
+                href: "/admin/media",
+                icon: "image",
+            },
+        ],
+    },
+    SidebarGroupDef {
+        label: "系统",
+        items: &[
+            SidebarItemDef {
+                label: "构建管理",
+                href: "/admin/build",
+                icon: "package",
+            },
+            SidebarItemDef {
+                label: "主题设置",
+                href: "/admin/theme",
+                icon: "palette",
+            },
+            SidebarItemDef {
+                label: "插件管理",
+                href: "/admin/plugins",
+                icon: "plug",
+            },
+        ],
+    },
+];
+
+fn is_active(current_path: &str, item_path: &str) -> bool {
+    if item_path == "/admin" {
+        current_path == "/admin"
+    } else {
+        current_path.starts_with(item_path)
+    }
+}
+
+/// 构建后台模板渲染所需的基础 context（sidebar、page_title 等）
+///
+/// 各页面在此基础上通过 context! 扩展页面特有的变量
+pub fn build_admin_context(
+    page_title: &str,
+    active_path: &str,
+    site_title: &str,
+    plugin_sidebar_items: &[PluginSidebarEntry],
+) -> Value {
+    let sidebar_groups: Vec<Value> = SIDEBAR_GROUPS
+        .iter()
+        .map(|group| {
+            let items: Vec<Value> = group
+                .items
+                .iter()
+                .map(|item| {
+                    context! {
+                        label => item.label,
+                        href => item.href,
+                        icon => item.icon,
+                        active => is_active(active_path, item.href),
+                    }
+                })
+                .collect();
+            context! {
+                label => if group.label.is_empty() { None } else { Some(group.label) },
+                items => items,
+            }
+        })
+        .collect();
+
+    let plugin_items: Vec<Value> = plugin_sidebar_items
+        .iter()
+        .map(|entry| {
+            context! {
+                label => &entry.label,
+                href => &entry.href,
+                icon => &entry.icon,
+                active => is_active(active_path, &entry.href),
+            }
+        })
+        .collect();
+
+    context! {
+        page_title => page_title,
+        site_title => site_title,
+        sidebar_groups => sidebar_groups,
+        plugin_sidebar_items => if plugin_items.is_empty() { None } else { Some(plugin_items) },
+        profile_active => is_active(active_path, "/admin/profile"),
+    }
 }
 
 /// 递归编译 admin/templates/ 下的所有 .cbtml 文件

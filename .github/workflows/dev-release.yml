@@ -1,0 +1,196 @@
+name: Dev Secure Release
+
+on:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: cblog
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact: cblog-x86_64-linux-musl
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: cblog-x86_64-macos
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: cblog-aarch64-macos
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: cblog-x86_64-windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl-tools (Linux)
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install cargo-auditable
+        run: cargo install cargo-auditable --locked
+
+      - name: Build with embedded SBOM
+        shell: bash
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+        run: cargo auditable build --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Linux)
+        if: contains(matrix.target, 'linux')
+        run: strip target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} dist/
+          cd dist && tar -czf ../${{ matrix.artifact }}.tar.gz *
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe dist/
+          cd dist && 7z a ../${{ matrix.artifact }}.zip *
+
+      - name: Generate checksum (Unix)
+        if: runner.os != 'Windows'
+        run: sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.sha256
+
+      - name: Generate checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Path "${{ matrix.artifact }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.artifact }}.zip" | Out-File -Encoding ASCII "${{ matrix.artifact }}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Merge checksums
+        run: cat artifacts/*.sha256 > artifacts/checksums.sha256
+
+      - name: Sign artifacts (cosign keyless)
+        working-directory: artifacts
+        run: |
+          for f in *.tar.gz *.zip; do
+            [ -f "$f" ] && cosign sign-blob --yes --output-signature "${f}.sig" --output-certificate "${f}.pem" "$f"
+          done
+
+      - name: Generate supply chain attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+
+      - name: Generate changelog
+        run: |
+          echo "## Dev Pre-release \`$(git rev-parse --short HEAD)\`" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**Commit:** \`$(git rev-parse HEAD)\`" >> CHANGELOG.md
+          echo "**Build time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Recent Changes" >> CHANGELOG.md
+          if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            git log --no-merges --reverse --pretty=format:"- %s (%h)" \
+              ${{ github.event.before }}..${{ github.sha }} >> CHANGELOG.md
+          else
+            git log --no-merges --reverse --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          fi
+          echo "" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Artifacts" >> CHANGELOG.md
+          echo "| Platform | File |" >> CHANGELOG.md
+          echo "|----------|------|" >> CHANGELOG.md
+          echo "| Linux x86_64 (musl static) | \`cblog-x86_64-linux-musl.tar.gz\` |" >> CHANGELOG.md
+          echo "| macOS x86_64 | \`cblog-x86_64-macos.tar.gz\` |" >> CHANGELOG.md
+          echo "| macOS aarch64 (Apple Silicon) | \`cblog-aarch64-macos.tar.gz\` |" >> CHANGELOG.md
+          echo "| Windows x86_64 | \`cblog-x86_64-windows.zip\` |" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### Verification" >> CHANGELOG.md
+          echo '```bash' >> CHANGELOG.md
+          echo "# Verify checksum" >> CHANGELOG.md
+          echo "sha256sum -c checksums.sha256" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "# Verify cosign signature" >> CHANGELOG.md
+          echo 'cosign verify-blob \' >> CHANGELOG.md
+          echo '  --certificate <file>.pem \' >> CHANGELOG.md
+          echo '  --signature <file>.sig \' >> CHANGELOG.md
+          echo "  --certificate-identity \"https://github.com/${{ github.repository }}/.github/workflows/dev-release.yml@refs/heads/dev\" \\" >> CHANGELOG.md
+          echo '  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \' >> CHANGELOG.md
+          echo '  <file>' >> CHANGELOG.md
+          echo '```' >> CHANGELOG.md
+
+      - name: Delete old dev pre-releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --json tagName,isPrerelease -q '.[] | select(.isPrerelease and (.tagName | startswith("dev-"))) | .tagName' | while read -r tag; do
+            echo "Deleting old pre-release: $tag"
+            gh release delete "$tag" --yes --cleanup-tag || true
+          done
+
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          gh release create "dev-${SHORT_SHA}" \
+            --title "dev-${SHORT_SHA}" \
+            --prerelease \
+            --notes-file CHANGELOG.md \
+            artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256 artifacts/*.sig artifacts/*.pem

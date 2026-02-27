@@ -38,7 +38,7 @@ pub async fn list_pages(
     Query(params): Query<ListQuery>,
 ) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
@@ -151,49 +151,48 @@ pub async fn list_pages(
 
 pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
     let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/pages" class="page-back">{icon_back} 返回页面列表</a>
-<div class="page-header">
-    <h1 class="page-title">新建页面</h1>
-</div>
-<form method="POST" action="/admin/pages">
-    <div class="form-group">
-        <label class="form-label">标题</label>
-        <input type="text" name="title" class="form-input" required>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Slug（留空自动生成）</label>
-        <input type="text" name="slug" class="form-input">
-    </div>
-    <div class="form-group">
-        <label class="form-label">内容</label>
-        <input type="hidden" name="content" id="content-input">
-        <div class="editor-wrap">
-            {toolbar}
-            <div id="editor" class="editor-content"></div>
+<form method="POST" action="/admin/pages" id="page-form">
+    <input type="hidden" name="content" id="content-input">
+
+    <div class="editor-layout">
+        <div class="editor-main">
+            <input type="text" name="title" class="editor-title-input" placeholder="输入页面标题..." required>
+            <div class="editor-wrap">
+                {toolbar}
+                <div id="editor" class="editor-content"></div>
+            </div>
         </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">状态</label>
-            <select name="status" class="form-select">
-                <option value="draft">草稿</option>
-                <option value="published">已发布</option>
-            </select>
+
+        <div class="editor-sidebar">
+            <div class="card">
+                <div class="card-header"><span class="card-title">发布</span></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <select name="status" class="form-select">
+                            <option value="draft">草稿</option>
+                            <option value="published">已发布</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Slug（留空自动生成）</label>
+                        <input type="text" name="slug" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">模板</label>
+                        <input type="text" name="template" placeholder="default" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">创建页面</button>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">模板</label>
-            <input type="text" name="template" placeholder="default" class="form-input">
-        </div>
-    </div>
-    <div class="form-group">
-        <button type="submit" class="btn btn-primary">创建页面</button>
-        <a href="/admin/pages" class="btn btn-secondary">取消</a>
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
@@ -230,6 +229,13 @@ pub async fn create_page(
     .execute(&state.db)
     .await;
 
+    if status == "published" {
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            crate::admin::build::spawn_build(&state_clone, "auto:create_page").await;
+        });
+    }
+
     Redirect::to(&format!("/admin/pages/{id}"))
 }
 
@@ -238,7 +244,7 @@ pub async fn edit_page_page(
     Path(id): Path<String>,
 ) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
@@ -265,45 +271,46 @@ pub async fn edit_page_page(
     let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/pages" class="page-back">{icon_back} 返回页面列表</a>
-<div class="page-header">
-    <h1 class="page-title">编辑页面</h1>
-    <form method="POST" action="/admin/pages/{id}/delete" onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;">
-        <button type="submit" class="btn btn-danger">删除</button>
-    </form>
-</div>
-<form method="POST" action="/admin/pages/{id}">
-    <div class="form-group">
-        <label class="form-label">标题</label>
-        <input type="text" name="title" value="{title}" class="form-input" required>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Slug</label>
-        <input type="text" name="slug" value="{slug}" class="form-input">
-    </div>
-    <div class="form-group">
-        <label class="form-label">内容</label>
-        <input type="hidden" name="content" id="content-input">
-        <div class="editor-wrap">
-            {toolbar}
-            <div id="editor" class="editor-content"></div>
+<form method="POST" action="/admin/pages/{id}" id="page-form">
+    <input type="hidden" name="content" id="content-input">
+
+    <div class="editor-layout">
+        <div class="editor-main">
+            <input type="text" name="title" class="editor-title-input" placeholder="输入页面标题..." value="{title}" required>
+            <div class="editor-wrap">
+                {toolbar}
+                <div id="editor" class="editor-content"></div>
+            </div>
         </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">状态</label>
-            <select name="status" class="form-select">
-                <option value="draft" {sel_draft}>草稿</option>
-                <option value="published" {sel_pub}>已发布</option>
-            </select>
+
+        <div class="editor-sidebar">
+            <div class="card">
+                <div class="card-header"><span class="card-title">发布</span></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <select name="status" class="form-select">
+                            <option value="draft" {sel_draft}>草稿</option>
+                            <option value="published" {sel_pub}>已发布</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Slug</label>
+                        <input type="text" name="slug" value="{slug}" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">模板</label>
+                        <input type="text" name="template" value="{template}" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">保存修改</button>
+                    <div style="margin-top:8px;">
+                        <form method="POST" action="/admin/pages/{id}/delete" onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;">
+                            <button type="submit" class="btn btn-danger" style="width:100%;">删除</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">模板</label>
-            <input type="text" name="template" value="{template}" class="form-input">
-        </div>
-    </div>
-    <div class="form-group">
-        <button type="submit" class="btn btn-primary">保存修改</button>
-        <a href="/admin/pages" class="btn btn-secondary">返回列表</a>
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
@@ -345,6 +352,11 @@ pub async fn update_page(
     .execute(&state.db)
     .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:update_page").await;
+    });
+
     Redirect::to(&format!("/admin/pages/{id}"))
 }
 
@@ -356,6 +368,11 @@ pub async fn delete_page(
         .bind(&id)
         .execute(&state.db)
         .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:delete_page").await;
+    });
 
     Redirect::to("/admin/pages")
 }

@@ -42,7 +42,7 @@ pub async fn list_posts(
     Query(params): Query<ListQuery>,
 ) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
@@ -195,63 +195,82 @@ pub async fn list_posts(
 
 pub async fn new_post_page(State(state): State<AppState>) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
     let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/posts" class="page-back">{icon_back} 返回文章列表</a>
-<div class="page-header">
-    <h1 class="page-title">新建文章</h1>
-</div>
-<form method="POST" action="/admin/posts">
-    <div class="form-group">
-        <label class="form-label">标题</label>
-        <input type="text" name="title" class="form-input" required>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Slug（留空自动生成）</label>
-        <input type="text" name="slug" class="form-input">
-    </div>
-    <div class="form-group">
-        <label class="form-label">内容</label>
-        <input type="hidden" name="content" id="content-input">
-        <div class="editor-wrap">
-            {toolbar}
-            <div id="editor" class="editor-content"></div>
+<form method="POST" action="/admin/posts" id="post-form">
+    <input type="hidden" name="content" id="content-input">
+    <input type="hidden" name="tags" id="tags-input">
+    <input type="hidden" name="category" id="category-input">
+
+    <div class="editor-layout">
+        <div class="editor-main">
+            <input type="text" name="title" class="editor-title-input" placeholder="输入文章标题..." required>
+            <div class="editor-wrap">
+                {toolbar}
+                <div id="editor" class="editor-content"></div>
+            </div>
         </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">状态</label>
-            <select name="status" class="form-select">
-                <option value="draft">草稿</option>
-                <option value="published">已发布</option>
-            </select>
+
+        <div class="editor-sidebar">
+            <div class="card">
+                <div class="card-header"><span class="card-title">发布</span></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <select name="status" class="form-select">
+                            <option value="draft">草稿</option>
+                            <option value="published">已发布</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Slug（留空自动生成）</label>
+                        <input type="text" name="slug" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">创建文章</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">分类</span></div>
+                <div class="card-body">
+                    <select id="category-select" class="form-select">
+                        <option value="">无分类</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">标签</span></div>
+                <div class="card-body">
+                    <div class="tag-input-container" id="tag-container">
+                        <input type="text" id="tag-input-field" placeholder="输入标签回车添加...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">封面图</span></div>
+                <div class="card-body">
+                    <input type="text" name="cover_image" id="cover-input" class="form-input" placeholder="图片 URL">
+                    <div class="cover-preview" id="cover-preview" style="display:none;">
+                        <img id="cover-preview-img" src="" alt="封面预览">
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="openMediaPicker(null, 'cover')">从媒体库选择</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">摘要</span></div>
+                <div class="card-body">
+                    <textarea name="excerpt" class="form-textarea" rows="3" placeholder="文章摘要..."></textarea>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">分类</label>
-            <input type="text" name="category" class="form-input">
-        </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">标签（逗号分隔）</label>
-            <input type="text" name="tags" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label">封面图 URL</label>
-            <input type="text" name="cover_image" class="form-input">
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="form-label">摘要</label>
-        <input type="text" name="excerpt" class="form-input">
-    </div>
-    <div class="form-group">
-        <button type="submit" class="btn btn-primary">创建文章</button>
-        <a href="/admin/posts" class="btn btn-secondary">取消</a>
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
@@ -295,6 +314,21 @@ pub async fn create_post(
     .execute(&state.db)
     .await;
 
+    sync_post_taxonomy(
+        &state.db,
+        &id,
+        form.tags.as_deref().unwrap_or(""),
+        form.category.as_deref().unwrap_or(""),
+    )
+    .await;
+
+    if status == "published" {
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            crate::admin::build::spawn_build(&state_clone, "auto:create_post").await;
+        });
+    }
+
     Redirect::to(&format!("/admin/posts/{id}"))
 }
 
@@ -303,7 +337,7 @@ pub async fn edit_post_page(
     Path(id): Path<String>,
 ) -> Html<String> {
     let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: crate::admin::settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 
@@ -336,62 +370,81 @@ pub async fn edit_post_page(
     let toolbar = editor_toolbar();
     let body = format!(
         r#"<a href="/admin/posts" class="page-back">{icon_back} 返回文章列表</a>
-<div class="page-header">
-    <h1 class="page-title">编辑文章</h1>
-    <div style="display:flex;gap:8px;">
-        {publish_btn}
-        <form method="POST" action="/admin/posts/{id}/delete" onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;">
-            <button type="submit" class="btn btn-danger">删除</button>
-        </form>
-    </div>
-</div>
-<form method="POST" action="/admin/posts/{id}">
-    <div class="form-group">
-        <label class="form-label">标题</label>
-        <input type="text" name="title" value="{title}" class="form-input" required>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Slug</label>
-        <input type="text" name="slug" value="{slug}" class="form-input">
-    </div>
-    <div class="form-group">
-        <label class="form-label">内容</label>
-        <input type="hidden" name="content" id="content-input">
-        <div class="editor-wrap">
-            {toolbar}
-            <div id="editor" class="editor-content"></div>
+<form method="POST" action="/admin/posts/{id}" id="post-form">
+    <input type="hidden" name="content" id="content-input">
+    <input type="hidden" name="tags" id="tags-input" value="{tags}">
+    <input type="hidden" name="category" id="category-input" value="{category}">
+
+    <div class="editor-layout">
+        <div class="editor-main">
+            <input type="text" name="title" class="editor-title-input" placeholder="输入文章标题..." value="{title}" required>
+            <div class="editor-wrap">
+                {toolbar}
+                <div id="editor" class="editor-content"></div>
+            </div>
         </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">状态</label>
-            <select name="status" class="form-select">
-                <option value="draft" {sel_draft}>草稿</option>
-                <option value="published" {sel_pub}>已发布</option>
-            </select>
+
+        <div class="editor-sidebar">
+            <div class="card">
+                <div class="card-header"><span class="card-title">发布</span></div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">状态</label>
+                        <select name="status" class="form-select">
+                            <option value="draft" {sel_draft}>草稿</option>
+                            <option value="published" {sel_pub}>已发布</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Slug</label>
+                        <input type="text" name="slug" value="{slug}" class="form-input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;">保存修改</button>
+                    <div style="display:flex;gap:8px;margin-top:8px;">
+                        {publish_btn}
+                        <form method="POST" action="/admin/posts/{id}/delete" style="flex:1;" onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;">
+                            <button type="submit" class="btn btn-danger" style="width:100%;">删除</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">分类</span></div>
+                <div class="card-body">
+                    <select id="category-select" class="form-select">
+                        <option value="">无分类</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">标签</span></div>
+                <div class="card-body">
+                    <div class="tag-input-container" id="tag-container">
+                        <input type="text" id="tag-input-field" placeholder="输入标签回车添加...">
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">封面图</span></div>
+                <div class="card-body">
+                    <input type="text" name="cover_image" id="cover-input" value="{cover_image}" class="form-input" placeholder="图片 URL">
+                    <div class="cover-preview" id="cover-preview" style="{cover_display}">
+                        <img id="cover-preview-img" src="{cover_image}" alt="封面预览">
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="openMediaPicker(null, 'cover')">从媒体库选择</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><span class="card-title">摘要</span></div>
+                <div class="card-body">
+                    <textarea name="excerpt" class="form-textarea" rows="3" placeholder="文章摘要...">{excerpt}</textarea>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">分类</label>
-            <input type="text" name="category" value="{category}" class="form-input">
-        </div>
-    </div>
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">标签（逗号分隔）</label>
-            <input type="text" name="tags" value="{tags}" class="form-input">
-        </div>
-        <div class="form-group">
-            <label class="form-label">封面图 URL</label>
-            <input type="text" name="cover_image" value="{cover_image}" class="form-input">
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="form-label">摘要</label>
-        <input type="text" name="excerpt" value="{excerpt}" class="form-input">
-    </div>
-    <div class="form-group">
-        <button type="submit" class="btn btn-primary">保存修改</button>
-        <a href="/admin/posts" class="btn btn-secondary">返回列表</a>
     </div>
 </form>"#,
         icon_back = svg_icon("arrow-left"),
@@ -404,15 +457,16 @@ pub async fn edit_post_page(
         tags = html_escape(tags),
         category = html_escape(category),
         cover_image = html_escape(cover_image),
+        cover_display = if cover_image.is_empty() { "display:none;" } else { "" },
         excerpt = html_escape(excerpt),
         publish_btn = if post_status == "draft" {
             format!(
-                r#"<form method="POST" action="/admin/posts/{}/publish"><button type="submit" class="btn btn-success">发布</button></form>"#,
+                r#"<form method="POST" action="/admin/posts/{}/publish" style="flex:1;"><button type="submit" class="btn btn-success" style="width:100%;">发布</button></form>"#,
                 html_escape(post_id)
             )
         } else {
             format!(
-                r#"<form method="POST" action="/admin/posts/{}/unpublish"><button type="submit" class="btn btn-secondary">取消发布</button></form>"#,
+                r#"<form method="POST" action="/admin/posts/{}/unpublish" style="flex:1;"><button type="submit" class="btn btn-secondary" style="width:100%;">取消发布</button></form>"#,
                 html_escape(post_id)
             )
         },
@@ -454,6 +508,19 @@ pub async fn update_post(
     .execute(&state.db)
     .await;
 
+    sync_post_taxonomy(
+        &state.db,
+        &id,
+        form.tags.as_deref().unwrap_or(""),
+        form.category.as_deref().unwrap_or(""),
+    )
+    .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:update_post").await;
+    });
+
     Redirect::to(&format!("/admin/posts/{id}"))
 }
 
@@ -467,6 +534,11 @@ pub async fn delete_post(
         .bind(&id)
         .execute(&state.db)
         .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:delete_post").await;
+    });
 
     Redirect::to("/admin/posts")
 }
@@ -482,6 +554,11 @@ pub async fn publish_post(
         .execute(&state.db)
         .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:publish_post").await;
+    });
+
     Redirect::to(&format!("/admin/posts/{id}"))
 }
 
@@ -496,5 +573,108 @@ pub async fn unpublish_post(
         .execute(&state.db)
         .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:unpublish_post").await;
+    });
+
     Redirect::to(&format!("/admin/posts/{id}"))
+}
+
+/// 同步文章的分类和标签关联表
+/// 根据表单提交的 tags（逗号分隔）和 category 字符串，
+/// 清空旧关联并重建，对不存在的标签/分类自动创建
+async fn sync_post_taxonomy(
+    db: &sqlx::SqlitePool,
+    post_id: &str,
+    tags_str: &str,
+    category_str: &str,
+) {
+    // 同步标签
+    let _ = sqlx::query("DELETE FROM post_tags WHERE post_id = ?")
+        .bind(post_id)
+        .execute(db)
+        .await;
+
+    let tags: Vec<&str> = tags_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    for tag_name in tags {
+        let slug = generate_slug(tag_name);
+        if let Some(tag_id) = get_or_create_tag(db, tag_name, &slug).await {
+            let _ = sqlx::query("INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)")
+                .bind(post_id)
+                .bind(&tag_id)
+                .execute(db)
+                .await;
+        }
+    }
+
+    // 同步分类
+    let _ = sqlx::query("DELETE FROM post_categories WHERE post_id = ?")
+        .bind(post_id)
+        .execute(db)
+        .await;
+
+    let category = category_str.trim();
+    if !category.is_empty() {
+        let slug = generate_slug(category);
+        if let Some(cat_id) = get_or_create_category(db, category, &slug).await {
+            let _ = sqlx::query(
+                "INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)",
+            )
+            .bind(post_id)
+            .bind(&cat_id)
+            .execute(db)
+            .await;
+        }
+    }
+}
+
+async fn get_or_create_tag(db: &sqlx::SqlitePool, name: &str, slug: &str) -> Option<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+            .bind(name)
+            .fetch_optional(db)
+            .await
+            .ok()?;
+
+    if let Some((id,)) = existing {
+        return Some(id);
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT INTO tags (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(slug)
+        .bind(&now)
+        .execute(db)
+        .await
+        .ok()?;
+    Some(id)
+}
+
+async fn get_or_create_category(db: &sqlx::SqlitePool, name: &str, slug: &str) -> Option<String> {
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT id FROM categories WHERE name = ?")
+            .bind(name)
+            .fetch_optional(db)
+            .await
+            .ok()?;
+
+    if let Some((id,)) = existing {
+        return Some(id);
+    }
+
+    let id = ulid::Ulid::new().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query("INSERT INTO categories (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
+        .bind(&id)
+        .bind(name)
+        .bind(slug)
+        .bind(&now)
+        .execute(db)
+        .await
+        .ok()?;
+    Some(id)
 }

@@ -135,6 +135,16 @@ const SIDEBAR_GROUPS: &[SidebarGroup] = &[
                 icon: "file",
             },
             SidebarItem {
+                label: "分类管理",
+                href: "/admin/categories",
+                icon: "folder",
+            },
+            SidebarItem {
+                label: "标签管理",
+                href: "/admin/tags",
+                icon: "tag",
+            },
+            SidebarItem {
                 label: "媒体库",
                 href: "/admin/media",
                 icon: "image",
@@ -144,6 +154,11 @@ const SIDEBAR_GROUPS: &[SidebarGroup] = &[
     SidebarGroup {
         label: "系统",
         items: &[
+            SidebarItem {
+                label: "常规设置",
+                href: "/admin/settings",
+                icon: "settings",
+            },
             SidebarItem {
                 label: "构建管理",
                 href: "/admin/build",
@@ -261,6 +276,9 @@ pub fn svg_icon(name: &str) -> &'static str {
         "arrow-left" => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>"#,
         "plus" => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>"#,
         "upload" => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>"#,
+        "settings" => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>"#,
+        "folder" => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>"#,
+        "tag" => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>"#,
         _ => r#"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>"#,
     }
 }
@@ -332,6 +350,11 @@ body {
     max-width: 1200px;
     margin: 0 auto;
     padding: 32px 40px;
+}
+
+.admin-content-wide {
+    max-width: none;
+    padding: 24px 32px;
 }
 
 /* ── Sidebar ── */
@@ -983,6 +1006,7 @@ a:hover {
     .admin-sidebar { width: 200px; }
     .admin-main { margin-left: 200px; }
     .admin-content { padding: 20px 16px; }
+    .admin-content-wide { padding: 16px 12px; }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .form-row { grid-template-columns: 1fr; }
 }
@@ -1214,6 +1238,156 @@ a:hover {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ── Gutenberg Editor Layout ── */
+.editor-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+    align-items: start;
+}
+
+.editor-main {
+    min-width: 0;
+}
+
+.editor-sidebar {
+    position: sticky;
+    top: 20px;
+}
+
+.editor-sidebar .card {
+    margin-bottom: 16px;
+}
+
+.editor-sidebar .card-body {
+    padding: 16px;
+}
+
+.editor-title-input {
+    width: 100%;
+    border: none;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--c-text-primary);
+    outline: none;
+    padding: 0;
+    margin-bottom: 16px;
+    line-height: 1.3;
+    background: transparent;
+}
+
+.editor-title-input::placeholder {
+    color: var(--c-text-secondary);
+    opacity: 0.5;
+}
+
+.tag-input-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    min-height: 38px;
+    cursor: text;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.tag-input-container:focus-within {
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px rgba(99,91,255,.12);
+}
+
+.tag-input-container .tag-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--c-brand);
+    color: #fff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tag-input-container .tag-badge .tag-remove {
+    cursor: pointer;
+    opacity: 0.7;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.tag-input-container .tag-badge .tag-remove:hover {
+    opacity: 1;
+}
+
+.tag-input-container input {
+    flex: 1;
+    min-width: 80px;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    padding: 2px 4px;
+    background: transparent;
+}
+
+.cover-preview {
+    margin-top: 8px;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.cover-preview img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    display: block;
+}
+
+.editor-drop-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(99,91,255,.1);
+    border: 3px dashed var(--c-brand);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--c-brand);
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.media-upload-zone {
+    border: 2px dashed var(--c-border);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+    margin-bottom: 12px;
+}
+
+.media-upload-zone:hover {
+    border-color: var(--c-brand);
+    background: rgba(99,91,255,.04);
+}
+
+.media-upload-zone.uploading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+@media (max-width: 1024px) {
+    .editor-layout {
+        grid-template-columns: 1fr;
+    }
+    .editor-sidebar {
+        position: static;
+    }
+}
 "#;
 
 // ── Toast JS ──
@@ -1287,6 +1461,10 @@ import Color from 'https://esm.sh/@tiptap/extension-color@2'
 import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2'
 import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2'
 import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2'
+import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2'
+import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2'
+import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2'
+import Typography from 'https://esm.sh/@tiptap/extension-typography@2'
 
 const contentDataEl = document.getElementById('editor-content-data');
 const initialContent = contentDataEl ? JSON.parse(contentDataEl.textContent) : '';
@@ -1309,15 +1487,29 @@ const editor = new Editor({
         Highlight.configure({ multicolor: true }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        Subscript,
+        Superscript,
+        CharacterCount,
+        Typography,
     ],
     content: initialContent,
     onUpdate({ editor }) {
         document.getElementById('content-input').value = editor.getHTML();
+        updateCharCount(editor);
     },
 });
 
+function updateCharCount(ed) {
+    const el = document.getElementById('editor-char-count');
+    if (!el) return;
+    const chars = ed.storage.characterCount.characters();
+    const words = ed.storage.characterCount.words();
+    el.textContent = words + ' 字 / ' + chars + ' 字符';
+}
+
 // 初始化时同步一次
 document.getElementById('content-input').value = editor.getHTML();
+updateCharCount(editor);
 
 // 表单提交时确保最新内容
 document.querySelectorAll('form').forEach(form => {
@@ -1326,6 +1518,58 @@ document.querySelectorAll('form').forEach(form => {
         if (input) input.value = editor.getHTML();
     });
 });
+
+// ── 图片上传 ──
+
+async function uploadImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/admin/api/media/upload', { method: 'POST', body: formData });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '上传失败');
+    }
+    return await res.json();
+}
+
+// 编辑器拖拽上传
+const editorEl = document.getElementById('editor');
+if (editorEl) {
+    editorEl.addEventListener('drop', async (e) => {
+        const files = e.dataTransfer?.files;
+        if (files?.length && files[0].type.startsWith('image/')) {
+            e.preventDefault();
+            try {
+                const result = await uploadImage(files[0]);
+                editor.chain().focus().setImage({ src: result.url }).run();
+            } catch (err) {
+                if (typeof showToast === 'function') showToast(err.message, 'error');
+            }
+        }
+    });
+    editorEl.addEventListener('dragover', (e) => {
+        if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+    });
+
+    // 编辑器粘贴上传
+    editorEl.addEventListener('paste', async (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                try {
+                    const result = await uploadImage(file);
+                    editor.chain().focus().setImage({ src: result.url }).run();
+                } catch (err) {
+                    if (typeof showToast === 'function') showToast(err.message, 'error');
+                }
+                break;
+            }
+        }
+    });
+}
 
 // 工具栏按钮绑定
 const toolbar = document.getElementById('editor-toolbar');
@@ -1339,6 +1583,8 @@ if (toolbar) {
                 case 'underline': editor.chain().focus().toggleUnderline().run(); break;
                 case 'strike': editor.chain().focus().toggleStrike().run(); break;
                 case 'code': editor.chain().focus().toggleCode().run(); break;
+                case 'subscript': editor.chain().focus().toggleSubscript().run(); break;
+                case 'superscript': editor.chain().focus().toggleSuperscript().run(); break;
                 case 'bulletList': editor.chain().focus().toggleBulletList().run(); break;
                 case 'orderedList': editor.chain().focus().toggleOrderedList().run(); break;
                 case 'taskList': editor.chain().focus().toggleTaskList().run(); break;
@@ -1356,7 +1602,7 @@ if (toolbar) {
                     break;
                 }
                 case 'image': {
-                    openMediaPicker(editor);
+                    openMediaPicker(editor, 'editor');
                     break;
                 }
                 case 'table': {
@@ -1394,6 +1640,8 @@ if (toolbar) {
                 case 'underline': isActive = editor.isActive('underline'); break;
                 case 'strike': isActive = editor.isActive('strike'); break;
                 case 'code': isActive = editor.isActive('code'); break;
+                case 'subscript': isActive = editor.isActive('subscript'); break;
+                case 'superscript': isActive = editor.isActive('superscript'); break;
                 case 'bulletList': isActive = editor.isActive('bulletList'); break;
                 case 'orderedList': isActive = editor.isActive('orderedList'); break;
                 case 'taskList': isActive = editor.isActive('taskList'); break;
@@ -1406,7 +1654,6 @@ if (toolbar) {
             btn.classList.toggle('active', isActive);
         });
 
-        // 更新标题选择器
         const headingSelect = document.getElementById('tb-heading');
         if (headingSelect) {
             if (editor.isActive('heading', { level: 1 })) headingSelect.value = '1';
@@ -1417,14 +1664,19 @@ if (toolbar) {
     }
 }
 
-// 媒体选择器
-function openMediaPicker(editor) {
+// ── 媒体选择器（支持上传和两种目标：编辑器插入 / 封面图设置） ──
+
+function openMediaPicker(editorRef, target) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML =
         '<div class="modal media-picker-modal">' +
             '<div class="modal-title">选择媒体</div>' +
-            '<div class="modal-body"><div class="media-picker-grid" id="media-picker-grid">加载中...</div></div>' +
+            '<div class="modal-body">' +
+                '<div class="media-upload-zone" id="media-upload-zone">点击或拖拽上传图片</div>' +
+                '<input type="file" id="media-upload-file" hidden accept="image/*">' +
+                '<div class="media-picker-grid" id="media-picker-grid">加载中...</div>' +
+            '</div>' +
             '<div class="modal-actions">' +
                 '<button class="btn btn-secondary" id="media-picker-cancel">取消</button>' +
                 '<div style="flex:1"></div>' +
@@ -1434,17 +1686,64 @@ function openMediaPicker(editor) {
         '</div>';
     document.body.appendChild(backdrop);
 
+    function insertImage(url) {
+        if (target === 'cover') {
+            const coverInput = document.getElementById('cover-input');
+            if (coverInput) {
+                coverInput.value = url;
+                coverInput.dispatchEvent(new Event('input'));
+            }
+        } else if (editorRef) {
+            editorRef.chain().focus().setImage({ src: url }).run();
+        }
+        backdrop.remove();
+    }
+
     document.getElementById('media-picker-cancel').onclick = () => backdrop.remove();
     backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
 
     document.getElementById('media-picker-insert-url').onclick = () => {
         const url = document.getElementById('media-picker-url').value.trim();
-        if (url) {
-            editor.chain().focus().setImage({ src: url }).run();
-            backdrop.remove();
-        }
+        if (url) insertImage(url);
     };
 
+    // 上传区域交互
+    const uploadZone = document.getElementById('media-upload-zone');
+    const uploadFile = document.getElementById('media-upload-file');
+
+    uploadZone.onclick = () => uploadFile.click();
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--c-brand)'; });
+    uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = ''; });
+    uploadZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        uploadZone.style.borderColor = '';
+        const file = e.dataTransfer?.files?.[0];
+        if (file && file.type.startsWith('image/')) {
+            await handleUploadInPicker(file, uploadZone, insertImage);
+        }
+    });
+
+    uploadFile.addEventListener('change', async () => {
+        const file = uploadFile.files?.[0];
+        if (file) {
+            await handleUploadInPicker(file, uploadZone, insertImage);
+        }
+    });
+
+    async function handleUploadInPicker(file, zone, callback) {
+        zone.classList.add('uploading');
+        zone.textContent = '上传中...';
+        try {
+            const result = await uploadImage(file);
+            callback(result.url);
+        } catch (err) {
+            zone.classList.remove('uploading');
+            zone.textContent = '上传失败，点击重试';
+            if (typeof showToast === 'function') showToast(err.message, 'error');
+        }
+    }
+
+    // 加载媒体库列表
     fetch('/admin/api/media')
         .then(r => r.json())
         .then(items => {
@@ -1462,10 +1761,7 @@ function openMediaPicker(editor) {
                 el.className = 'media-picker-item';
                 el.innerHTML = '<img src="' + item.url + '" alt="' + (item.filename || '') + '">' +
                     '<div class="name">' + (item.filename || '') + '</div>';
-                el.onclick = () => {
-                    editor.chain().focus().setImage({ src: item.url }).run();
-                    backdrop.remove();
-                };
+                el.onclick = () => insertImage(item.url);
                 grid.appendChild(el);
             });
         })
@@ -1473,6 +1769,96 @@ function openMediaPicker(editor) {
             document.getElementById('media-picker-grid').innerHTML =
                 '<p style="text-align:center;color:var(--c-danger);">加载媒体失败</p>';
         });
+}
+
+// 全局暴露 openMediaPicker 供 HTML onclick 调用
+window.openMediaPicker = openMediaPicker;
+
+// ── 分类选择器 ──
+
+const catSelect = document.getElementById('category-select');
+const catHidden = document.getElementById('category-input');
+if (catSelect && catHidden) {
+    fetch('/admin/api/categories').then(r => r.json()).then(cats => {
+        cats.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.name;
+            opt.textContent = c.name;
+            catSelect.appendChild(opt);
+        });
+        if (catHidden.value) catSelect.value = catHidden.value;
+    }).catch(() => {});
+
+    catSelect.addEventListener('change', () => {
+        catHidden.value = catSelect.value;
+    });
+}
+
+// ── 标签输入组件 ──
+
+const tagContainer = document.getElementById('tag-container');
+const tagInputField = document.getElementById('tag-input-field');
+const tagsHidden = document.getElementById('tags-input');
+
+if (tagContainer && tagInputField && tagsHidden) {
+    let currentTags = tagsHidden.value
+        ? tagsHidden.value.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
+    renderTags();
+
+    function renderTags() {
+        tagContainer.querySelectorAll('.tag-badge').forEach(el => el.remove());
+        currentTags.forEach((tag, i) => {
+            const badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.innerHTML = tag + ' <span class="tag-remove" data-index="' + i + '">&times;</span>';
+            tagContainer.insertBefore(badge, tagInputField);
+        });
+        tagsHidden.value = currentTags.join(',');
+    }
+
+    tagInputField.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            const val = tagInputField.value.trim();
+            if (val && !currentTags.includes(val)) {
+                currentTags.push(val);
+                renderTags();
+            }
+            tagInputField.value = '';
+        }
+        if (e.key === 'Backspace' && !tagInputField.value && currentTags.length) {
+            currentTags.pop();
+            renderTags();
+        }
+    });
+
+    tagContainer.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tag-remove')) {
+            currentTags.splice(parseInt(e.target.dataset.index), 1);
+            renderTags();
+        }
+        tagInputField.focus();
+    });
+}
+
+// ── 封面图预览 ──
+
+const coverInput = document.getElementById('cover-input');
+const coverPreview = document.getElementById('cover-preview');
+const coverImg = document.getElementById('cover-preview-img');
+
+if (coverInput && coverPreview && coverImg) {
+    function updateCoverPreview() {
+        if (coverInput.value) {
+            coverImg.src = coverInput.value;
+            coverPreview.style.display = '';
+        } else {
+            coverPreview.style.display = 'none';
+        }
+    }
+    coverInput.addEventListener('input', updateCoverPreview);
+    updateCoverPreview();
 }
 "#;
 
@@ -1493,6 +1879,8 @@ pub fn editor_toolbar() -> &'static str {
         <button type="button" data-cmd="underline" title="下划线"><u>U</u></button>
         <button type="button" data-cmd="strike" title="删除线"><s>S</s></button>
         <button type="button" data-cmd="code" title="行内代码">&lt;/&gt;</button>
+        <button type="button" data-cmd="subscript" title="下标">X<sub>2</sub></button>
+        <button type="button" data-cmd="superscript" title="上标">X<sup>2</sup></button>
     </div>
     <div class="toolbar-divider"></div>
     <div class="toolbar-group">
@@ -1520,6 +1908,7 @@ pub fn editor_toolbar() -> &'static str {
         <button type="button" data-cmd="undo" title="撤销">↩</button>
         <button type="button" data-cmd="redo" title="重做">↪</button>
     </div>
+    <div style="margin-left:auto;font-size:12px;color:var(--c-text-secondary);padding:0 8px;white-space:nowrap;" id="editor-char-count"></div>
 </div>"#
 }
 
@@ -1547,7 +1936,7 @@ pub fn admin_editor_page(
 <div class="admin-layout">
 {sidebar}
 <main class="admin-main">
-<div class="admin-content">
+<div class="admin-content admin-content-wide">
 {body}
 </div>
 </main>

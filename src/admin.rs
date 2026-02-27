@@ -9,18 +9,30 @@ use crate::state::AppState;
 
 pub mod auth;
 pub mod build;
+pub mod categories;
 pub mod cleanup;
 pub mod dashboard;
 pub mod health;
+pub mod install;
 pub mod layout;
 pub mod media;
 pub mod pages;
 pub mod plugins;
 pub mod posts;
 pub mod profile;
+pub mod settings;
+pub mod tags;
 pub mod theme;
 
 pub fn router(state: AppState) -> Router {
+    // 安装路由（不受认证和安装检测中间件限制）
+    let install_routes = Router::new()
+        .route("/install", get(install::install_page).post(install::install_submit))
+        .route(
+            "/install/register",
+            get(install::register_page).post(install::register_submit),
+        );
+
     // 无需认证的路由
     let public_routes = Router::new()
         .route("/admin/login", get(auth::login_page).post(auth::login_submit))
@@ -52,6 +64,19 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/media/upload", get(media::upload_page).post(media::upload_media))
         .route("/admin/media/{id}/delete", post(media::delete_media))
         .route("/admin/api/media", get(media::api_media_list))
+        .route("/admin/api/media/upload", post(media::api_upload_media))
+        // 分类管理
+        .route("/admin/categories", get(categories::list_categories).post(categories::create_category))
+        .route("/admin/categories/new", get(categories::new_category_page))
+        .route("/admin/categories/{id}", get(categories::edit_category_page).post(categories::update_category))
+        .route("/admin/categories/{id}/delete", post(categories::delete_category))
+        .route("/admin/api/categories", get(categories::api_list_categories))
+        // 标签管理
+        .route("/admin/tags", get(tags::list_tags).post(tags::create_tag))
+        .route("/admin/tags/new", get(tags::new_tag_page))
+        .route("/admin/tags/{id}", get(tags::edit_tag_page).post(tags::update_tag))
+        .route("/admin/tags/{id}/delete", post(tags::delete_tag))
+        .route("/admin/api/tags", get(tags::api_list_tags))
         // 构建管理
         .route("/admin/build/ws", get(build::build_status_ws))
         .route("/admin/build", get(build::build_history).post(build::trigger_build))
@@ -63,6 +88,8 @@ pub fn router(state: AppState) -> Router {
         // 主题管理
         .route("/admin/theme", get(theme::theme_settings).post(theme::save_theme_settings))
         .route("/admin/theme/switch", post(theme::switch_theme))
+        // 常规设置
+        .route("/admin/settings", get(settings::settings_page).post(settings::save_settings))
         // 插件自定义后台页面
         .route("/admin/ext/{plugin}/{slug}", get(plugin_admin_page))
         // 废弃路由重定向
@@ -84,10 +111,16 @@ pub fn router(state: AppState) -> Router {
     .append_index_html_on_directories(true);
 
     Router::new()
+        .merge(install_routes)
         .merge(public_routes)
         .merge(protected_routes)
         .nest_service("/media", media_service)
         .fallback_service(static_site)
+        // 安装检测中间件应用于所有路由
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            install::install_check_middleware,
+        ))
         .with_state(state)
 }
 
@@ -107,7 +140,7 @@ async fn plugin_admin_page(
     Path((plugin_name, slug)): Path<(String, String)>,
 ) -> Response {
     let ctx = layout::PageContext {
-        site_title: state.config.site.title.clone(),
+        site_title: settings::get_site_title(&state).await,
         plugin_sidebar_items: state.plugin_admin_pages.clone(),
     };
 

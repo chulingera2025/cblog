@@ -4,10 +4,8 @@ use std::path::Path;
 
 // 嵌入默认 cblog.toml
 const DEFAULT_CONFIG: &str = r#"[site]
-title = "My Blog"
 subtitle = ""
 description = ""
-url = "https://example.com"
 language = "zh-CN"
 timezone = "Asia/Shanghai"
 
@@ -53,8 +51,6 @@ pub fn ensure_initialized(root: &Path) -> Result<bool> {
 
     // 创建目录结构
     let dirs = [
-        "content/posts",
-        "content/pages",
         "themes/aurora/templates/partials",
         "themes/aurora/assets/scss",
         "themes/aurora/assets/js",

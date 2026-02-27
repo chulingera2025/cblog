@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Json;
 use minijinja::context;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::Row;
 
 use crate::admin::layout;

@@ -1,0 +1,48 @@
+extends base
+
+slot content
+  div.page-header
+    h1.page-title 文章管理
+    a.btn.btn-primary [href="/admin/posts/new"]
+      raw svg_icon("plus")
+      span  新建文章
+  div.filter-bar
+    form.filter-bar [method="GET"] [action="/admin/posts"]
+      select.form-select [name="status"]
+        option [value=""] 全部状态
+        if current_status == "draft"
+          option [value="draft"] [selected] 草稿
+        else
+          option [value="draft"] 草稿
+        end
+        if current_status == "published"
+          option [value="published"] [selected] 已发布
+        else
+          option [value="published"] 已发布
+        end
+      input.form-input [type="text"] [name="search"] [placeholder="搜索标题..."] [value="{{ search_query }}"]
+      button.btn.btn-primary.btn-sm [type="submit"] 筛选
+  div.table-wrapper
+    table
+      thead
+        tr
+          th 标题
+          th 状态
+          th 创建时间
+          th 更新时间
+          th 操作
+      tbody
+        for post in posts
+          tr
+            td
+              a [href="/admin/posts/{{ post.id }}"] {{ post.title }}
+            td
+              span.badge.{{ post.badge_class }} {{ post.status_label }}
+            td {{ post.created_at }}
+            td {{ post.updated_at }}
+            td.actions
+              a.btn.btn-secondary.btn-sm [href="/admin/posts/{{ post.id }}"] 编辑
+              form [method="POST"] [action="/admin/posts/{{ post.id }}/delete"] [style="display:inline;"] [onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;"]
+                button.btn.btn-danger.btn-sm [type="submit"] 删除
+        end
+  include partials/pagination

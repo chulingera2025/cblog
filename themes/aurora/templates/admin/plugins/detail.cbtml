@@ -1,0 +1,107 @@
+extends base
+
+slot content
+  a.page-back [href="/admin/plugins"]
+    raw svg_icon("arrow-left")
+    span 返回插件列表
+
+  div.page-header
+    h1.page-title
+      | {{ plugin_name }}
+      if plugin_version
+        | &nbsp;
+        span.badge.badge-neutral v{{ plugin_version }}
+      end
+      | &nbsp;
+      if is_enabled
+        span.badge.badge-success 已启用
+      else
+        span.badge.badge-neutral 未启用
+      end
+
+  if error_message
+    div.alert.alert-error {{ error_message }}
+  else
+    p.form-hint [style="margin-bottom:20px;"] {{ plugin_description }}
+
+    div.card [style="margin-bottom:16px;"]
+      div.card-header
+        span.card-title 能力声明
+      div.card-body
+        div.form-group
+          strong Reads:
+          if cap_reads
+            div
+              for item in cap_reads
+                span.badge.badge-info {{ item }}
+                | &nbsp;
+              end
+          else
+            span.form-hint 无
+          end
+        div.form-group
+          strong Writes:
+          if cap_writes
+            div
+              for item in cap_writes
+                span.badge.badge-info {{ item }}
+                | &nbsp;
+              end
+          else
+            span.form-hint 无
+          end
+        div.form-group
+          strong Generates:
+          if cap_generates
+            div
+              for item in cap_generates
+                span.badge.badge-info {{ item }}
+                | &nbsp;
+              end
+          else
+            span.form-hint 无
+          end
+
+    div.card [style="margin-bottom:16px;"]
+      div.card-header
+        span.card-title 依赖关系
+      div.card-body
+        div.form-group
+          strong After:
+          if dep_after
+            div
+              for item in dep_after
+                span.badge.badge-info {{ item }}
+                | &nbsp;
+              end
+          else
+            span.form-hint 无
+          end
+        div.form-group
+          strong Conflicts:
+          if dep_conflicts
+            div
+              for item in dep_conflicts
+                span.badge.badge-info {{ item }}
+                | &nbsp;
+              end
+          else
+            span.form-hint 无
+          end
+
+    div.card
+      div.card-header
+        span.card-title 插件配置
+      div.card-body
+        if config_fields
+          form [method="POST"] [action="/admin/plugins/{{ plugin_name }}/config"]
+            for field in config_fields
+              div.form-group
+                label.form-label {{ field.key }}
+                input.form-input [type="text"] [name="{{ field.key }}"] [value="{{ field.value }}"]
+              end
+            button.btn.btn-primary [type="submit"] 保存配置
+        else
+          p.form-hint 此插件暂无配置数据。
+        end
+  end

@@ -3,3 +3,4 @@ target/
 public/
 .cblog-cache/
 .claude/cblog.md
+/.claude/CLAUDE.md

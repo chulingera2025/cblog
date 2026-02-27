@@ -15,7 +15,7 @@ mod state;
 mod theme;
 
 #[derive(Parser)]
-#[command(name = "cblog", about = "Rust + Lua 博客引擎")]
+#[command(name = "cblog", about = "Rust + Lua 博客引擎", version = long_version())]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -103,7 +103,8 @@ fn main() -> anyhow::Result<()> {
                 &site_config.theme.active,
             );
             let db_posts = build::stages::load::fetch_db_posts_sync(&root.join("cblog.db"));
-            let _stats = build::run(&root, &site_config, clean, plugin_configs, theme_saved_config, db_posts)?;
+            let site_settings = admin::settings::SiteSettings::load_sync(&root.join("cblog.db"));
+            let _stats = build::run(&root, &site_config, clean, plugin_configs, theme_saved_config, db_posts, site_settings)?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;
@@ -159,50 +160,97 @@ async fn run_server(
 ) -> anyhow::Result<()> {
     let app_state = state::AppState::new(root.clone(), site_config).await?;
 
-    // 首次启动时创建默认管理员
-    ensure_default_admin(&app_state).await?;
-
     // 启动后台定时清理过期 token
     admin::cleanup::spawn_token_cleanup(app_state.clone());
 
     let app = admin::router(app_state);
 
     let addr = format!("{host}:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            if let Some(info) = detect_port_process(port) {
+                tracing::error!("端口 {port} 已被占用：{info}");
+            } else {
+                tracing::error!("端口 {port} 已被占用");
+            }
+            return Err(e.into());
+        }
+        Err(e) => return Err(e.into()),
+    };
     tracing::info!("后台管理服务启动：http://{}", addr);
 
     axum::serve(listener, app).await?;
     Ok(())
 }
 
-/// 如果 users 表为空，创建默认管理员账号 admin/admin
-async fn ensure_default_admin(state: &state::AppState) -> anyhow::Result<()> {
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.db)
-        .await?;
+/// 通过 /proc 检测占用指定端口的进程信息（仅 Linux）
+fn detect_port_process(port: u16) -> Option<String> {
+    use std::fs;
 
-    if count.0 == 0 {
-        let id = ulid::Ulid::new().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
+    let port_hex = format!("{:04X}", port);
 
-        // argon2 哈希默认密码
-        use argon2::PasswordHasher;
-        let salt = argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-        let hash = argon2::Argon2::default()
-            .hash_password(b"admin", &salt)
-            .map_err(|e| anyhow::anyhow!("密码哈希失败：{}", e))?
-            .to_string();
-
-        sqlx::query("INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)")
-            .bind(&id)
-            .bind("admin")
-            .bind(&hash)
-            .bind(&now)
-            .execute(&state.db)
-            .await?;
-
-        tracing::warn!("已创建默认管理员账号 admin/admin，请尽快修改密码！");
+    // 遍历 /proc/net/tcp 和 tcp6 查找本地监听端口
+    for net_file in &["/proc/net/tcp", "/proc/net/tcp6"] {
+        let content = fs::read_to_string(net_file).ok()?;
+        for line in content.lines().skip(1) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() < 4 {
+                continue;
+            }
+            // fields[1] = local_address (hex_ip:hex_port), fields[3] = state (0A = LISTEN)
+            if fields[3] != "0A" {
+                continue;
+            }
+            if let Some(lport) = fields[1].rsplit(':').next()
+                && lport == port_hex
+                && let Some(inode) = fields.get(9)
+            {
+                return find_pid_by_inode(inode);
+            }
+        }
     }
+    None
+}
 
-    Ok(())
+fn find_pid_by_inode(target_inode: &str) -> Option<String> {
+    use std::fs;
+
+    let socket_pattern = format!("socket:[{target_inode}]");
+    for entry in fs::read_dir("/proc").ok()? {
+        let entry = entry.ok()?;
+        let pid_str = entry.file_name().to_string_lossy().to_string();
+        if !pid_str.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let fd_dir = entry.path().join("fd");
+        if let Ok(fds) = fs::read_dir(&fd_dir) {
+            for fd in fds.flatten() {
+                if let Ok(link) = fs::read_link(fd.path())
+                    && link.to_string_lossy() == socket_pattern
+                {
+                    let comm = fs::read_to_string(entry.path().join("comm"))
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string();
+                    return Some(format!("PID {pid_str} ({comm})"));
+                }
+            }
+        }
+    }
+    None
+}
+
+const fn long_version() -> &'static str {
+    concat!(
+        env!("CARGO_PKG_VERSION"),
+        "\ncommit:  ",
+        env!("CBLOG_GIT_COMMIT"),
+        "\nbuild:   ",
+        env!("CBLOG_BUILD_TIME"),
+        "\ntarget:  ",
+        env!("CBLOG_BUILD_TARGET"),
+        "\nprofile: ",
+        env!("CBLOG_BUILD_PROFILE"),
+    )
 }

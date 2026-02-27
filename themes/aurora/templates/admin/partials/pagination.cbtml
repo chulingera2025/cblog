@@ -1,0 +1,14 @@
+if total_pages > 1
+  div.pagination
+    if current_page > 1
+      a.btn.btn-secondary [href="{{ base_url }}?page={{ current_page - 1 }}"] 上一页
+    else
+      span.btn.btn-secondary [disabled] 上一页
+    end
+    span 第 {{ current_page }} / {{ total_pages }} 页
+    if current_page < total_pages
+      a.btn.btn-secondary [href="{{ base_url }}?page={{ current_page + 1 }}"] 下一页
+    else
+      span.btn.btn-secondary [disabled] 下一页
+    end
+end

@@ -1,0 +1,105 @@
+extends base
+slot content
+  div.page-header
+    h1.page-title 构建管理
+    div.actions
+      div#build-status
+      button.btn.btn-success [type="button"] [id="trigger-build-btn"] 触发构建
+  div.table-wrapper
+    table
+      thead
+        tr
+          th 开始时间
+          th 触发方式
+          th 状态
+          th 耗时
+          th 完成时间
+          th 错误
+      tbody#build-tbody
+        for build in builds
+          tr
+            td {{ build.started_at }}
+            td {{ build.trigger }}
+            td
+              if build.status == "success"
+                span.badge.badge-success 成功
+              else if build.status == "failed"
+                span.badge.badge-danger 失败
+              else
+                span.badge.badge-warning 进行中
+              end
+            td {{ build.duration }}
+            td {{ build.finished_at }}
+            td
+              if build.error
+                span.badge.badge-danger [title="{{ build.error_full }}"] {{ build.error }}
+              end
+        end
+slot extra_scripts
+  script
+    (function() {
+        var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        var ws = new WebSocket(protocol + '//' + location.host + '/admin/build/ws');
+        var statusEl = document.getElementById('build-status');
+        var btn = document.getElementById('trigger-build-btn');
+        var tbody = document.getElementById('build-tbody');
+
+        function pad(n) { return n < 10 ? '0' + n : '' + n; }
+        function fmtTime(d) {
+            return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+                + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        }
+        function escHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        btn.addEventListener('click', function() {
+            btn.disabled = true;
+            btn.textContent = '构建中...';
+            fetch('/admin/build', { method: 'POST' }).catch(function() {
+                btn.disabled = false;
+                btn.textContent = '触发构建';
+                showToast('触发构建请求失败', 'error');
+            });
+        });
+
+        ws.onmessage = function(e) {
+            var event = JSON.parse(e.data);
+            if (event.type === 'Started') {
+                statusEl.innerHTML = '<span class="badge badge-warning">构建中...</span>';
+                btn.disabled = true;
+                btn.textContent = '构建中...';
+            } else if (event.type === 'Finished') {
+                statusEl.innerHTML = '<span class="badge badge-success">构建成功</span>';
+                setTimeout(function() { statusEl.innerHTML = ''; }, 3000);
+                btn.disabled = false;
+                btn.textContent = '触发构建';
+                var now = fmtTime(new Date());
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + now + '</td>'
+                    + '<td>manual</td>'
+                    + '<td><span class="badge badge-success">成功</span></td>'
+                    + '<td>' + event.total_ms + 'ms</td>'
+                    + '<td>' + now + '</td>'
+                    + '<td></td>';
+                tbody.insertBefore(tr, tbody.firstChild);
+            } else if (event.type === 'Failed') {
+                statusEl.innerHTML = '<span class="badge badge-danger">构建失败</span>';
+                setTimeout(function() { statusEl.innerHTML = ''; }, 3000);
+                btn.disabled = false;
+                btn.textContent = '触发构建';
+                var now = fmtTime(new Date());
+                var errMsg = (event.error || '').substring(0, 80);
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + now + '</td>'
+                    + '<td>manual</td>'
+                    + '<td><span class="badge badge-danger">失败</span></td>'
+                    + '<td>-</td>'
+                    + '<td>' + now + '</td>'
+                    + '<td><span class="badge badge-danger" title="' + escHtml(event.error || '') + '">' + escHtml(errMsg) + '</span></td>';
+                tbody.insertBefore(tr, tbody.firstChild);
+            }
+        };
+    })();

@@ -27,6 +27,7 @@ pub struct SiteConfig {
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct SiteInfo {
+    #[serde(default)]
     pub title: String,
     #[serde(default)]
     pub subtitle: String,

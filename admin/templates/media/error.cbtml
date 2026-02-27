@@ -1,0 +1,11 @@
+extends base
+slot content
+  a.page-back [href="/admin/media/upload"]
+    raw svg_icon("arrow-left")
+    span 返回上传
+  div.page-header
+    h1.page-title 上传失败
+  div.alert.alert-error {{ error_message }}
+  div
+    a.btn.btn-primary [href="/admin/media/upload"] 重新上传
+    a.btn.btn-secondary [href="/admin/media"] 返回媒体库

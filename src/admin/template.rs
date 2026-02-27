@@ -7,8 +7,9 @@ use std::path::Path;
 
 /// 构建后台专用 MiniJinja 渲染环境
 ///
-/// 从 admin/templates/ 读取 cbtml 模板并编译，注册后台所需的过滤器和全局函数
-pub fn build_admin_env(project_root: &Path, site_url: &str) -> Result<Environment<'static>> {
+/// 从当前激活主题的 templates/admin/ 目录读取 cbtml 模板并编译，
+/// 注册后台所需的过滤器和全局函数
+pub fn build_admin_env(project_root: &Path, theme_name: &str, site_url: &str) -> Result<Environment<'static>> {
     let mut env = Environment::new();
 
     // 复用前台已有的过滤器
@@ -20,14 +21,22 @@ pub fn build_admin_env(project_root: &Path, site_url: &str) -> Result<Environmen
     // 全局函数：svg_icon，在模板中以 {{ svg_icon("posts") }} 调用
     env.add_function("svg_icon", fn_svg_icon);
 
-    // 从 admin/templates/ 加载并编译 cbtml 模板
-    let templates_dir = project_root.join("admin/templates");
-    if templates_dir.exists() {
-        let compiled = compile_admin_templates(&templates_dir)?;
-        for (name, source) in compiled {
-            env.add_template_owned(name.clone(), source)
-                .with_context(|| format!("注册后台模板 {} 失败", name))?;
-        }
+    // 从主题的 templates/admin/ 目录加载并编译 cbtml 模板
+    let templates_dir = project_root
+        .join("themes")
+        .join(theme_name)
+        .join("templates/admin");
+
+    anyhow::ensure!(
+        templates_dir.exists(),
+        "后台模板目录不存在：{}",
+        templates_dir.display()
+    );
+
+    let compiled = compile_admin_templates(&templates_dir)?;
+    for (name, source) in compiled {
+        env.add_template_owned(name.clone(), source)
+            .with_context(|| format!("注册后台模板 {} 失败", name))?;
     }
 
     Ok(env)

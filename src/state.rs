@@ -73,8 +73,12 @@ impl AppState {
             .unwrap_or((0,));
         let installed = user_count.0 > 0;
 
-        // 构建后台模板渲染环境
-        let admin_env = crate::admin::template::build_admin_env(&project_root, &config.site.url)?;
+        // 构建后台模板渲染环境（从当前激活主题加载后台模板）
+        let admin_env = crate::admin::template::build_admin_env(
+            &project_root,
+            &config.theme.active,
+            &config.site.url,
+        )?;
 
         Ok(Self {
             db: pool,

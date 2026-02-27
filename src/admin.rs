@@ -105,9 +105,9 @@ pub fn router(state: AppState) -> Router {
         state.project_root.join(&state.config.media.upload_dir),
     );
 
-    // 后台静态资源（CSS 等）
+    // 后台静态资源（CSS 等），从当前激活主题的 assets/admin/ 目录加载
     let admin_static = tower_http::services::ServeDir::new(
-        state.project_root.join("admin/static"),
+        state.project_root.join("themes").join(&state.config.theme.active).join("assets/admin"),
     );
 
     // 静态站点服务（build 输出目录作为 fallback）

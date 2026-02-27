@@ -15,6 +15,9 @@ pub async fn health_check(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "status": status,
         "version": env!("CARGO_PKG_VERSION"),
+        "commit": env!("CBLOG_GIT_COMMIT"),
+        "build_time": env!("CBLOG_BUILD_TIME"),
+        "target": env!("CBLOG_BUILD_TARGET"),
         "database": if db_ok { "connected" } else { "error" },
     }))
 }

@@ -52,7 +52,7 @@ impl PluginEngine {
             .map_err(|e| anyhow::anyhow!("创建 cblog table 失败: {e}"))?;
 
         // cblog.version()
-        let version = env!("CARGO_PKG_VERSION").to_string();
+        let version = concat!(env!("CARGO_PKG_VERSION"), "-", env!("CBLOG_GIT_COMMIT")).to_string();
         cblog
             .set(
                 "version",

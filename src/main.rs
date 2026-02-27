@@ -165,9 +165,77 @@ async fn run_server(
     let app = admin::router(app_state);
 
     let addr = format!("{host}:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            if let Some(info) = detect_port_process(port) {
+                tracing::error!("端口 {port} 已被占用：{info}");
+            } else {
+                tracing::error!("端口 {port} 已被占用");
+            }
+            return Err(e.into());
+        }
+        Err(e) => return Err(e.into()),
+    };
     tracing::info!("后台管理服务启动：http://{}", addr);
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// 通过 /proc 检测占用指定端口的进程信息（仅 Linux）
+fn detect_port_process(port: u16) -> Option<String> {
+    use std::fs;
+
+    let port_hex = format!("{:04X}", port);
+
+    // 遍历 /proc/net/tcp 和 tcp6 查找本地监听端口
+    for net_file in &["/proc/net/tcp", "/proc/net/tcp6"] {
+        let content = fs::read_to_string(net_file).ok()?;
+        for line in content.lines().skip(1) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() < 4 {
+                continue;
+            }
+            // fields[1] = local_address (hex_ip:hex_port), fields[3] = state (0A = LISTEN)
+            if fields[3] != "0A" {
+                continue;
+            }
+            if let Some(lport) = fields[1].rsplit(':').next()
+                && lport == port_hex
+                && let Some(inode) = fields.get(9)
+            {
+                return find_pid_by_inode(inode);
+            }
+        }
+    }
+    None
+}
+
+fn find_pid_by_inode(target_inode: &str) -> Option<String> {
+    use std::fs;
+
+    let socket_pattern = format!("socket:[{target_inode}]");
+    for entry in fs::read_dir("/proc").ok()? {
+        let entry = entry.ok()?;
+        let pid_str = entry.file_name().to_string_lossy().to_string();
+        if !pid_str.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let fd_dir = entry.path().join("fd");
+        if let Ok(fds) = fs::read_dir(&fd_dir) {
+            for fd in fds.flatten() {
+                if let Ok(link) = fs::read_link(fd.path())
+                    && link.to_string_lossy() == socket_pattern
+                {
+                    let comm = fs::read_to_string(entry.path().join("comm"))
+                        .unwrap_or_default()
+                        .trim()
+                        .to_string();
+                    return Some(format!("PID {pid_str} ({comm})"));
+                }
+            }
+        }
+    }
+    None
 }

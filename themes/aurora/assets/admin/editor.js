@@ -41,6 +41,8 @@ try {
             updateCharCount(editor);
         },
     });
+    const loadingEl = editorElement?.querySelector('.editor-loading');
+    if (loadingEl) loadingEl.remove();
 } catch (err) {
     console.error('TipTap 编辑器初始化失败:', err);
     if (editorElement) {

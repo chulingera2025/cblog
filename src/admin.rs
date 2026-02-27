@@ -1,11 +1,17 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::http::header;
 use axum::middleware;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::Router;
 
 use crate::state::AppState;
+
+/// 内嵌的默认后台 CSS
+const EMBEDDED_ADMIN_CSS: &str = include_str!("../themes/aurora/assets/admin/admin.css");
+/// 内嵌的默认后台 JS
+const EMBEDDED_EDITOR_JS: &str = include_str!("../themes/aurora/assets/admin/editor.js");
 
 pub mod auth;
 pub mod build;
@@ -105,23 +111,23 @@ pub fn router(state: AppState) -> Router {
         state.project_root.join(&state.config.media.upload_dir),
     );
 
-    // 后台静态资源（CSS 等），从当前激活主题的 assets/admin/ 目录加载
-    let admin_static = tower_http::services::ServeDir::new(
-        state.project_root.join("themes").join(&state.config.theme.active).join("assets/admin"),
-    );
-
     // 静态站点服务（build 输出目录作为 fallback）
     let static_site = tower_http::services::ServeDir::new(
         state.project_root.join(&state.config.build.output_dir),
     )
     .append_index_html_on_directories(true);
 
+    // 后台静态资源路由（内嵌 + 主题目录覆盖）
+    let admin_static_routes = Router::new()
+        .route("/admin/static/admin.css", get(serve_admin_css))
+        .route("/admin/static/editor.js", get(serve_editor_js));
+
     Router::new()
         .merge(install_routes)
         .merge(public_routes)
         .merge(protected_routes)
+        .merge(admin_static_routes)
         .nest_service("/media", media_service)
-        .nest_service("/admin/static", admin_static)
         .fallback_service(static_site)
         // 安装检测中间件应用于所有路由
         .layer(middleware::from_fn_with_state(
@@ -236,4 +242,38 @@ async fn plugin_admin_page(
         &ctx,
     ))
     .into_response()
+}
+
+/// 提供后台 CSS：优先从主题目录加载，否则返回内嵌默认版本
+async fn serve_admin_css(State(state): State<AppState>) -> Response {
+    let theme_path = state
+        .project_root
+        .join("themes")
+        .join(&state.config.theme.active)
+        .join("assets/admin/admin.css");
+
+    let content = if theme_path.exists() {
+        std::fs::read_to_string(&theme_path).unwrap_or_else(|_| EMBEDDED_ADMIN_CSS.to_string())
+    } else {
+        EMBEDDED_ADMIN_CSS.to_string()
+    };
+
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], content).into_response()
+}
+
+/// 提供后台 JS：优先从主题目录加载，否则返回内嵌默认版本
+async fn serve_editor_js(State(state): State<AppState>) -> Response {
+    let theme_path = state
+        .project_root
+        .join("themes")
+        .join(&state.config.theme.active)
+        .join("assets/admin/editor.js");
+
+    let content = if theme_path.exists() {
+        std::fs::read_to_string(&theme_path).unwrap_or_else(|_| EMBEDDED_EDITOR_JS.to_string())
+    } else {
+        EMBEDDED_EDITOR_JS.to_string()
+    };
+
+    ([(header::CONTENT_TYPE, "application/javascript; charset=utf-8")], content).into_response()
 }

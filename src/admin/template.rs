@@ -5,10 +5,33 @@ use minijinja::{Environment, Value, context};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// 内嵌的默认后台模板（编译进二进制，保证即使主题目录缺失也能正常渲染）
+const DEFAULT_TEMPLATES: &[(&str, &str)] = &[
+    ("base.cbtml", include_str!("../../themes/aurora/templates/admin/base.cbtml")),
+    ("build.cbtml", include_str!("../../themes/aurora/templates/admin/build.cbtml")),
+    ("dashboard.cbtml", include_str!("../../themes/aurora/templates/admin/dashboard.cbtml")),
+    ("editor-base.cbtml", include_str!("../../themes/aurora/templates/admin/editor-base.cbtml")),
+    ("login.cbtml", include_str!("../../themes/aurora/templates/admin/login.cbtml")),
+    ("profile.cbtml", include_str!("../../themes/aurora/templates/admin/profile.cbtml")),
+    ("theme.cbtml", include_str!("../../themes/aurora/templates/admin/theme.cbtml")),
+    ("media/error.cbtml", include_str!("../../themes/aurora/templates/admin/media/error.cbtml")),
+    ("media/list.cbtml", include_str!("../../themes/aurora/templates/admin/media/list.cbtml")),
+    ("media/upload.cbtml", include_str!("../../themes/aurora/templates/admin/media/upload.cbtml")),
+    ("pages/form.cbtml", include_str!("../../themes/aurora/templates/admin/pages/form.cbtml")),
+    ("pages/list.cbtml", include_str!("../../themes/aurora/templates/admin/pages/list.cbtml")),
+    ("partials/editor-toolbar.cbtml", include_str!("../../themes/aurora/templates/admin/partials/editor-toolbar.cbtml")),
+    ("partials/page-header.cbtml", include_str!("../../themes/aurora/templates/admin/partials/page-header.cbtml")),
+    ("partials/pagination.cbtml", include_str!("../../themes/aurora/templates/admin/partials/pagination.cbtml")),
+    ("partials/sidebar.cbtml", include_str!("../../themes/aurora/templates/admin/partials/sidebar.cbtml")),
+    ("plugins/detail.cbtml", include_str!("../../themes/aurora/templates/admin/plugins/detail.cbtml")),
+    ("plugins/list.cbtml", include_str!("../../themes/aurora/templates/admin/plugins/list.cbtml")),
+    ("posts/form.cbtml", include_str!("../../themes/aurora/templates/admin/posts/form.cbtml")),
+    ("posts/list.cbtml", include_str!("../../themes/aurora/templates/admin/posts/list.cbtml")),
+];
+
 /// 构建后台专用 MiniJinja 渲染环境
 ///
-/// 从当前激活主题的 templates/admin/ 目录读取 cbtml 模板并编译，
-/// 注册后台所需的过滤器和全局函数
+/// 先加载内嵌的默认模板（保证后台始终可用），再检查用户主题目录是否有覆盖模板
 pub fn build_admin_env(project_root: &Path, theme_name: &str, site_url: &str) -> Result<Environment<'static>> {
     let mut env = Environment::new();
 
@@ -21,22 +44,26 @@ pub fn build_admin_env(project_root: &Path, theme_name: &str, site_url: &str) ->
     // 全局函数：svg_icon，在模板中以 {{ svg_icon("posts") }} 调用
     env.add_function("svg_icon", fn_svg_icon);
 
-    // 从主题的 templates/admin/ 目录加载并编译 cbtml 模板
-    let templates_dir = project_root
+    // 先编译并加载内嵌的默认模板
+    for (name, source) in DEFAULT_TEMPLATES {
+        let compiled = cbtml::compile(source, name)
+            .with_context(|| format!("编译内嵌后台模板 {} 失败", name))?;
+        env.add_template_owned(name.to_string(), compiled)
+            .with_context(|| format!("注册内嵌后台模板 {} 失败", name))?;
+    }
+
+    // 如果当前主题目录下有 admin 模板，用它覆盖默认模板
+    let theme_admin_dir = project_root
         .join("themes")
         .join(theme_name)
         .join("templates/admin");
 
-    anyhow::ensure!(
-        templates_dir.exists(),
-        "后台模板目录不存在：{}",
-        templates_dir.display()
-    );
-
-    let compiled = compile_admin_templates(&templates_dir)?;
-    for (name, source) in compiled {
-        env.add_template_owned(name.clone(), source)
-            .with_context(|| format!("注册后台模板 {} 失败", name))?;
+    if theme_admin_dir.exists() {
+        let overrides = compile_admin_templates(&theme_admin_dir)?;
+        for (name, compiled) in overrides {
+            env.add_template_owned(name.clone(), compiled)
+                .with_context(|| format!("注册覆盖后台模板 {} 失败", name))?;
+        }
     }
 
     Ok(env)

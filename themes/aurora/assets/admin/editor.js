@@ -151,8 +151,7 @@ if (toolbar && editor) {
                 case 'undo': editor.chain().focus().undo().run(); break;
                 case 'redo': editor.chain().focus().redo().run(); break;
                 case 'link': {
-                    const url = prompt('输入链接 URL:');
-                    if (url) editor.chain().focus().setLink({ href: url }).run();
+                    openLinkDialog(editor);
                     break;
                 }
                 case 'image': {
@@ -215,6 +214,59 @@ if (toolbar && editor) {
             else if (editor.isActive('heading', { level: 3 })) headingSelect.value = '3';
             else headingSelect.value = 'p';
         }
+    }
+}
+
+// ── 链接弹窗 ──
+
+function openLinkDialog(ed) {
+    const prevUrl = ed.getAttributes('link').href || '';
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML =
+        '<div class="modal" style="max-width:420px;">' +
+            '<div class="modal-title">插入链接</div>' +
+            '<div class="modal-body">' +
+                '<input type="text" id="link-url-input" class="form-input" placeholder="https://..." style="width:100%;">' +
+            '</div>' +
+            '<div class="modal-actions">' +
+                (prevUrl ? '<button class="btn btn-secondary" id="link-remove" style="margin-right:auto;">移除链接</button>' : '') +
+                '<button class="btn btn-secondary" id="link-cancel">取消</button>' +
+                '<button class="btn btn-primary" id="link-confirm">确定</button>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(backdrop);
+
+    const urlInput = document.getElementById('link-url-input');
+    urlInput.value = prevUrl;
+    urlInput.focus();
+    urlInput.select();
+
+    function close() { backdrop.remove(); ed.chain().focus().run(); }
+
+    function confirm() {
+        const url = urlInput.value.trim();
+        if (url) {
+            ed.chain().focus().setLink({ href: url }).run();
+        }
+        backdrop.remove();
+    }
+
+    document.getElementById('link-cancel').onclick = close;
+    document.getElementById('link-confirm').onclick = confirm;
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+    urlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+        if (e.key === 'Escape') close();
+    });
+
+    const removeBtn = document.getElementById('link-remove');
+    if (removeBtn) {
+        removeBtn.onclick = () => {
+            ed.chain().focus().unsetLink().run();
+            backdrop.remove();
+        };
     }
 }
 

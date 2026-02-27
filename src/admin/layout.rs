@@ -163,6 +163,52 @@ const SIDEBAR_GROUPS: &[SidebarGroup] = &[
     },
 ];
 
+/// 为 minijinja 模板生成 sidebar_groups 数据
+pub fn sidebar_groups_value(active_path: &str) -> Vec<minijinja::Value> {
+    SIDEBAR_GROUPS
+        .iter()
+        .map(|group| {
+            let items: Vec<minijinja::Value> = group
+                .items
+                .iter()
+                .map(|item| {
+                    minijinja::context! {
+                        label => item.label,
+                        href => item.href,
+                        icon => item.icon,
+                        active => is_active(active_path, item.href),
+                    }
+                    .into()
+                })
+                .collect();
+            minijinja::context! {
+                label => if group.label.is_empty() { None } else { Some(group.label) },
+                items => items,
+            }
+            .into()
+        })
+        .collect()
+}
+
+/// 为 minijinja 模板生成 plugin_sidebar_items 数据
+pub fn plugin_sidebar_value(
+    entries: &[PluginSidebarEntry],
+    active_path: &str,
+) -> Vec<minijinja::Value> {
+    entries
+        .iter()
+        .map(|entry| {
+            minijinja::context! {
+                label => entry.label.as_str(),
+                href => entry.href.as_str(),
+                icon => entry.icon.as_str(),
+                active => is_active(active_path, &entry.href),
+            }
+            .into()
+        })
+        .collect()
+}
+
 fn render_sidebar(active_path: &str, ctx: &PageContext) -> String {
     let mut html = String::from(r#"<aside class="admin-sidebar">"#);
 
@@ -240,51 +286,6 @@ fn render_sidebar(active_path: &str, ctx: &PageContext) -> String {
 
     html.push_str("</aside>");
     html
-}
-
-// ── 模板 sidebar 数据构建 ──
-
-/// 将内置侧边栏分组数据转为 minijinja Value，用于模板渲染
-pub fn sidebar_groups_value(active_path: &str) -> Vec<minijinja::Value> {
-    SIDEBAR_GROUPS
-        .iter()
-        .map(|group| {
-            let items: Vec<minijinja::Value> = group
-                .items
-                .iter()
-                .map(|item| {
-                    minijinja::context! {
-                        label => item.label,
-                        href => item.href,
-                        icon => item.icon,
-                        active => is_active(active_path, item.href),
-                    }
-                })
-                .collect();
-            minijinja::context! {
-                label => if group.label.is_empty() { "" } else { group.label },
-                items => items,
-            }
-        })
-        .collect()
-}
-
-/// 将插件侧边栏条目转为 minijinja Value
-pub fn plugin_sidebar_value(
-    entries: &[PluginSidebarEntry],
-    active_path: &str,
-) -> Vec<minijinja::Value> {
-    entries
-        .iter()
-        .map(|entry| {
-            minijinja::context! {
-                label => entry.label.as_str(),
-                href => entry.href.as_str(),
-                icon => entry.icon.as_str(),
-                active => is_active(active_path, &entry.href),
-            }
-        })
-        .collect()
 }
 
 // ── SVG 图标 ──

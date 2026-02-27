@@ -34,6 +34,7 @@ slot content
             if plugin.is_enabled
               a.btn.btn-secondary.btn-sm [href="/admin/plugins/{{ plugin.name }}"] 设置
             end
+    end
   else
     div.empty-state
       p 暂无可用插件。将插件放入 plugins/ 目录即可。

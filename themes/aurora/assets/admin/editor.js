@@ -14,6 +14,10 @@ import Color from 'https://esm.sh/@tiptap/extension-color@2'
 import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2'
 import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2'
 import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2'
+import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2'
+import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2'
+import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2'
+import Typography from 'https://esm.sh/@tiptap/extension-typography@2'
 
 const contentDataEl = document.getElementById('editor-content-data');
 const initialContent = contentDataEl ? JSON.parse(contentDataEl.textContent) : '';
@@ -36,15 +40,29 @@ const editor = new Editor({
         Highlight.configure({ multicolor: true }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        Subscript,
+        Superscript,
+        CharacterCount,
+        Typography,
     ],
     content: initialContent,
     onUpdate({ editor }) {
         document.getElementById('content-input').value = editor.getHTML();
+        updateCharCount(editor);
     },
 });
 
+function updateCharCount(ed) {
+    const el = document.getElementById('editor-char-count');
+    if (!el) return;
+    const chars = ed.storage.characterCount.characters();
+    const words = ed.storage.characterCount.words();
+    el.textContent = words + ' 字 / ' + chars + ' 字符';
+}
+
 // 初始化时同步一次
 document.getElementById('content-input').value = editor.getHTML();
+updateCharCount(editor);
 
 // 表单提交时确保最新内容
 document.querySelectorAll('form').forEach(form => {
@@ -53,6 +71,58 @@ document.querySelectorAll('form').forEach(form => {
         if (input) input.value = editor.getHTML();
     });
 });
+
+// ── 图片上传 ──
+
+async function uploadImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/admin/api/media/upload', { method: 'POST', body: formData });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '上传失败');
+    }
+    return await res.json();
+}
+
+// 编辑器拖拽上传
+const editorEl = document.getElementById('editor');
+if (editorEl) {
+    editorEl.addEventListener('drop', async (e) => {
+        const files = e.dataTransfer?.files;
+        if (files?.length && files[0].type.startsWith('image/')) {
+            e.preventDefault();
+            try {
+                const result = await uploadImage(files[0]);
+                editor.chain().focus().setImage({ src: result.url }).run();
+            } catch (err) {
+                if (typeof showToast === 'function') showToast(err.message, 'error');
+            }
+        }
+    });
+    editorEl.addEventListener('dragover', (e) => {
+        if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+    });
+
+    // 编辑器粘贴上传
+    editorEl.addEventListener('paste', async (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                e.preventDefault();
+                const file = item.getAsFile();
+                try {
+                    const result = await uploadImage(file);
+                    editor.chain().focus().setImage({ src: result.url }).run();
+                } catch (err) {
+                    if (typeof showToast === 'function') showToast(err.message, 'error');
+                }
+                break;
+            }
+        }
+    });
+}
 
 // 工具栏按钮绑定
 const toolbar = document.getElementById('editor-toolbar');
@@ -66,6 +136,8 @@ if (toolbar) {
                 case 'underline': editor.chain().focus().toggleUnderline().run(); break;
                 case 'strike': editor.chain().focus().toggleStrike().run(); break;
                 case 'code': editor.chain().focus().toggleCode().run(); break;
+                case 'subscript': editor.chain().focus().toggleSubscript().run(); break;
+                case 'superscript': editor.chain().focus().toggleSuperscript().run(); break;
                 case 'bulletList': editor.chain().focus().toggleBulletList().run(); break;
                 case 'orderedList': editor.chain().focus().toggleOrderedList().run(); break;
                 case 'taskList': editor.chain().focus().toggleTaskList().run(); break;
@@ -83,7 +155,7 @@ if (toolbar) {
                     break;
                 }
                 case 'image': {
-                    openMediaPicker(editor);
+                    openMediaPicker(editor, 'editor');
                     break;
                 }
                 case 'table': {
@@ -121,6 +193,8 @@ if (toolbar) {
                 case 'underline': isActive = editor.isActive('underline'); break;
                 case 'strike': isActive = editor.isActive('strike'); break;
                 case 'code': isActive = editor.isActive('code'); break;
+                case 'subscript': isActive = editor.isActive('subscript'); break;
+                case 'superscript': isActive = editor.isActive('superscript'); break;
                 case 'bulletList': isActive = editor.isActive('bulletList'); break;
                 case 'orderedList': isActive = editor.isActive('orderedList'); break;
                 case 'taskList': isActive = editor.isActive('taskList'); break;
@@ -133,7 +207,6 @@ if (toolbar) {
             btn.classList.toggle('active', isActive);
         });
 
-        // 更新标题选择器
         const headingSelect = document.getElementById('tb-heading');
         if (headingSelect) {
             if (editor.isActive('heading', { level: 1 })) headingSelect.value = '1';
@@ -144,14 +217,19 @@ if (toolbar) {
     }
 }
 
-// 媒体选择器
-function openMediaPicker(editor) {
+// ── 媒体选择器（支持上传和两种目标：编辑器插入 / 封面图设置） ──
+
+function openMediaPicker(editorRef, target) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML =
         '<div class="modal media-picker-modal">' +
             '<div class="modal-title">选择媒体</div>' +
-            '<div class="modal-body"><div class="media-picker-grid" id="media-picker-grid">加载中...</div></div>' +
+            '<div class="modal-body">' +
+                '<div class="media-upload-zone" id="media-upload-zone">点击或拖拽上传图片</div>' +
+                '<input type="file" id="media-upload-file" hidden accept="image/*">' +
+                '<div class="media-picker-grid" id="media-picker-grid">加载中...</div>' +
+            '</div>' +
             '<div class="modal-actions">' +
                 '<button class="btn btn-secondary" id="media-picker-cancel">取消</button>' +
                 '<div style="flex:1"></div>' +
@@ -161,17 +239,64 @@ function openMediaPicker(editor) {
         '</div>';
     document.body.appendChild(backdrop);
 
+    function insertImage(url) {
+        if (target === 'cover') {
+            const coverInput = document.getElementById('cover-input');
+            if (coverInput) {
+                coverInput.value = url;
+                coverInput.dispatchEvent(new Event('input'));
+            }
+        } else if (editorRef) {
+            editorRef.chain().focus().setImage({ src: url }).run();
+        }
+        backdrop.remove();
+    }
+
     document.getElementById('media-picker-cancel').onclick = () => backdrop.remove();
     backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
 
     document.getElementById('media-picker-insert-url').onclick = () => {
         const url = document.getElementById('media-picker-url').value.trim();
-        if (url) {
-            editor.chain().focus().setImage({ src: url }).run();
-            backdrop.remove();
-        }
+        if (url) insertImage(url);
     };
 
+    // 上传区域交互
+    const uploadZone = document.getElementById('media-upload-zone');
+    const uploadFile = document.getElementById('media-upload-file');
+
+    uploadZone.onclick = () => uploadFile.click();
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.style.borderColor = 'var(--c-brand)'; });
+    uploadZone.addEventListener('dragleave', () => { uploadZone.style.borderColor = ''; });
+    uploadZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        uploadZone.style.borderColor = '';
+        const file = e.dataTransfer?.files?.[0];
+        if (file && file.type.startsWith('image/')) {
+            await handleUploadInPicker(file, uploadZone, insertImage);
+        }
+    });
+
+    uploadFile.addEventListener('change', async () => {
+        const file = uploadFile.files?.[0];
+        if (file) {
+            await handleUploadInPicker(file, uploadZone, insertImage);
+        }
+    });
+
+    async function handleUploadInPicker(file, zone, callback) {
+        zone.classList.add('uploading');
+        zone.textContent = '上传中...';
+        try {
+            const result = await uploadImage(file);
+            callback(result.url);
+        } catch (err) {
+            zone.classList.remove('uploading');
+            zone.textContent = '上传失败，点击重试';
+            if (typeof showToast === 'function') showToast(err.message, 'error');
+        }
+    }
+
+    // 加载媒体库列表
     fetch('/admin/api/media')
         .then(r => r.json())
         .then(items => {
@@ -189,10 +314,7 @@ function openMediaPicker(editor) {
                 el.className = 'media-picker-item';
                 el.innerHTML = '<img src="' + item.url + '" alt="' + (item.filename || '') + '">' +
                     '<div class="name">' + (item.filename || '') + '</div>';
-                el.onclick = () => {
-                    editor.chain().focus().setImage({ src: item.url }).run();
-                    backdrop.remove();
-                };
+                el.onclick = () => insertImage(item.url);
                 grid.appendChild(el);
             });
         })
@@ -200,4 +322,96 @@ function openMediaPicker(editor) {
             document.getElementById('media-picker-grid').innerHTML =
                 '<p style="text-align:center;color:var(--c-danger);">加载媒体失败</p>';
         });
+}
+
+// 全局暴露 openMediaPicker 供 HTML onclick 调用
+window.openMediaPicker = openMediaPicker;
+
+// ── 分类选择器 ──
+
+const catSelect = document.getElementById('category-select');
+const catHidden = document.getElementById('category-input');
+if (catSelect && catHidden) {
+    fetch('/admin/api/categories').then(r => r.json()).then(cats => {
+        cats.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.name;
+            opt.textContent = c.name;
+            catSelect.appendChild(opt);
+        });
+        if (catHidden.value) catSelect.value = catHidden.value;
+    }).catch(() => {});
+
+    catSelect.addEventListener('change', () => {
+        catHidden.value = catSelect.value;
+    });
+}
+
+// ── 标签输入组件 ──
+
+const tagContainer = document.getElementById('tag-container');
+const tagInputField = document.getElementById('tag-input-field');
+const tagsHidden = document.getElementById('tags-input');
+
+if (tagContainer && tagInputField && tagsHidden) {
+    let currentTags = tagsHidden.value
+        ? tagsHidden.value.split(',').map(t => t.trim()).filter(Boolean)
+        : [];
+    renderTags();
+
+    function renderTags() {
+        tagContainer.querySelectorAll('.tag-badge').forEach(el => el.remove());
+        currentTags.forEach((tag, i) => {
+            const badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.innerHTML = tag + ' <span class="tag-remove" data-index="' + i + '">&times;</span>';
+            tagContainer.insertBefore(badge, tagInputField);
+        });
+        tagsHidden.value = currentTags.join(',');
+    }
+
+    tagInputField.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault();
+            const val = tagInputField.value.trim();
+            if (val && !currentTags.includes(val)) {
+                currentTags.push(val);
+                renderTags();
+            }
+            tagInputField.value = '';
+        }
+        if (e.key === 'Backspace' && !tagInputField.value && currentTags.length) {
+            currentTags.pop();
+            renderTags();
+        }
+    });
+
+    tagContainer.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.tag-remove');
+        if (removeBtn) {
+            const index = parseInt(removeBtn.dataset.index);
+            currentTags.splice(index, 1);
+            renderTags();
+        } else {
+            tagInputField.focus();
+        }
+    });
+}
+
+// ── 封面图预览 ──
+
+const coverInput = document.getElementById('cover-input');
+const coverPreview = document.getElementById('cover-preview');
+const coverPreviewImg = document.getElementById('cover-preview-img');
+
+if (coverInput && coverPreview && coverPreviewImg) {
+    coverInput.addEventListener('input', () => {
+        const url = coverInput.value.trim();
+        if (url) {
+            coverPreviewImg.src = url;
+            coverPreview.style.display = '';
+        } else {
+            coverPreview.style.display = 'none';
+        }
+    });
 }

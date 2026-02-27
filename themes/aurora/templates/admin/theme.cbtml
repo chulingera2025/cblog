@@ -158,6 +158,7 @@ slot content
                 input [type="hidden"] [name="theme_name"] [value="{{ theme.name }}"]
                 button.btn.btn-primary.btn-sm [type="submit"] 切换
             end
+    end
   end
 
 slot extra_scripts

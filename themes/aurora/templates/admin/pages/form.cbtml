@@ -4,69 +4,68 @@ slot editor_content
   a.page-back [href="/admin/pages"]
     raw svg_icon("arrow-left")
     span  返回页面列表
-  div.page-header
-    if is_edit
-      h1.page-title 编辑页面
-      form [method="POST"] [action="/admin/pages/{{ page_id }}/delete"] [onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;"]
-        button.btn.btn-danger [type="submit"] 删除
-    else
-      h1.page-title 新建页面
-    end
   if is_edit
-    form [method="POST"] [action="/admin/pages/{{ page_id }}"]
-      div.form-group
-        label.form-label 标题
-        input.form-input [type="text"] [name="title"] [value="{{ page_title }}"] [required]
-      div.form-group
-        label.form-label Slug
-        input.form-input [type="text"] [name="slug"] [value="{{ page_slug }}"]
-      div.form-group
-        label.form-label 内容
-        input [type="hidden"] [name="content"] [id="content-input"]
-        div.editor-wrap
-          include partials/editor-toolbar
-          div#editor.editor-content
-      div.form-row
-        div.form-group
-          label.form-label 状态
-          select.form-select [name="status"]
-            if page_status == "draft"
-              option [value="draft"] [selected] 草稿
-              option [value="published"] 已发布
-            else
-              option [value="draft"] 草稿
-              option [value="published"] [selected] 已发布
-            end
-        div.form-group
-          label.form-label 模板
-          input.form-input [type="text"] [name="template"] [value="{{ page_template }}"]
-      div.form-group
-        button.btn.btn-primary [type="submit"] 保存修改
-        a.btn.btn-secondary [href="/admin/pages"] 返回列表
+    form [method="POST"] [action="/admin/pages/{{ page_id }}"] [id="page-form"]
+      input [type="hidden"] [name="content"] [id="content-input"]
+
+      div.editor-layout
+        div.editor-main
+          input.editor-title-input [type="text"] [name="title"] [placeholder="输入页面标题..."] [value="{{ page_title }}"] [required]
+          div.editor-wrap
+            include partials/editor-toolbar
+            div#editor.editor-content
+
+        div.editor-sidebar
+          div.card
+            div.card-header
+              span.card-title 发布
+            div.card-body
+              div.form-group
+                label.form-label 状态
+                select.form-select [name="status"]
+                  if page_status == "draft"
+                    option [value="draft"] [selected] 草稿
+                    option [value="published"] 已发布
+                  else
+                    option [value="draft"] 草稿
+                    option [value="published"] [selected] 已发布
+                  end
+              div.form-group
+                label.form-label Slug
+                input.form-input [type="text"] [name="slug"] [value="{{ page_slug }}"]
+              div.form-group
+                label.form-label 模板
+                input.form-input [type="text"] [name="template"] [value="{{ page_template }}"]
+              button.btn.btn-primary [type="submit"] [style="width:100%;"] 保存修改
+              div [style="margin-top:8px;"]
+                form [method="POST"] [action="/admin/pages/{{ page_id }}/delete"] [onsubmit="confirmAction('删除页面', '确定要删除这个页面吗？', this); return false;"]
+                  button.btn.btn-danger [type="submit"] [style="width:100%;"] 删除
   else
-    form [method="POST"] [action="/admin/pages"]
-      div.form-group
-        label.form-label 标题
-        input.form-input [type="text"] [name="title"] [required]
-      div.form-group
-        label.form-label Slug（留空自动生成）
-        input.form-input [type="text"] [name="slug"]
-      div.form-group
-        label.form-label 内容
-        input [type="hidden"] [name="content"] [id="content-input"]
-        div.editor-wrap
-          include partials/editor-toolbar
-          div#editor.editor-content
-      div.form-row
-        div.form-group
-          label.form-label 状态
-          select.form-select [name="status"]
-            option [value="draft"] 草稿
-            option [value="published"] 已发布
-        div.form-group
-          label.form-label 模板
-          input.form-input [type="text"] [name="template"] [placeholder="default"]
-      div.form-group
-        button.btn.btn-primary [type="submit"] 创建页面
-        a.btn.btn-secondary [href="/admin/pages"] 取消
+    form [method="POST"] [action="/admin/pages"] [id="page-form"]
+      input [type="hidden"] [name="content"] [id="content-input"]
+
+      div.editor-layout
+        div.editor-main
+          input.editor-title-input [type="text"] [name="title"] [placeholder="输入页面标题..."] [required]
+          div.editor-wrap
+            include partials/editor-toolbar
+            div#editor.editor-content
+
+        div.editor-sidebar
+          div.card
+            div.card-header
+              span.card-title 发布
+            div.card-body
+              div.form-group
+                label.form-label 状态
+                select.form-select [name="status"]
+                  option [value="draft"] 草稿
+                  option [value="published"] 已发布
+              div.form-group
+                label.form-label Slug（留空自动生成）
+                input.form-input [type="text"] [name="slug"]
+              div.form-group
+                label.form-label 模板
+                input.form-input [type="text"] [name="template"] [placeholder="default"]
+              button.btn.btn-primary [type="submit"] [style="width:100%;"] 创建页面
   end

@@ -132,6 +132,7 @@ pub async fn new_page_page(State(state): State<AppState>) -> Html<String> {
         sidebar_groups => sidebar_groups,
         plugin_sidebar_items => plugin_items,
         profile_active => false,
+        wide_content => true,
         is_edit => false,
         editor_initial_content => "",
     };
@@ -212,6 +213,7 @@ pub async fn edit_page_page(
         sidebar_groups => sidebar_groups,
         plugin_sidebar_items => plugin_items,
         profile_active => false,
+        wide_content => true,
         is_edit => true,
         page_id => pg_id,
         page_title => pg_title,

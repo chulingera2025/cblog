@@ -15,6 +15,10 @@ div.editor-toolbar#editor-toolbar
       u U
     button [type="button"] [data-cmd="strike"] [title="删除线"]
       s S
+    button [type="button"] [data-cmd="subscript"] [title="下标"]
+      | X₂
+    button [type="button"] [data-cmd="superscript"] [title="上标"]
+      | X²
   div.toolbar-divider
   div.toolbar-group
     button [type="button"] [data-cmd="bulletList"] [title="无序列表"] •
@@ -36,3 +40,5 @@ div.editor-toolbar#editor-toolbar
   div.toolbar-group
     button [type="button"] [data-cmd="undo"] [title="撤销"] ↩
     button [type="button"] [data-cmd="redo"] [title="重做"] ↪
+  div.toolbar-divider
+  span#editor-char-count [style="font-size:12px;color:var(--c-text-secondary);padding:0 8px;line-height:32px;"]

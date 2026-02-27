@@ -8,8 +8,13 @@ html [lang="zh-CN"]
     div.admin-layout
       include partials/sidebar
       main.admin-main
-        div.admin-content
-          slot content
+        if wide_content
+          div.admin-content-wide
+            slot content
+        else
+          div.admin-content
+            slot content
+        end
     div#toast-container.toast-container
     script
       function showToast(msg, type) {

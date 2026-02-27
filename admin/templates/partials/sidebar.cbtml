@@ -1,0 +1,50 @@
+aside.admin-sidebar
+  div.sidebar-brand
+    raw svg_icon("terminal")
+    span cblog
+  for group in sidebar_groups
+    div.sidebar-group
+      if group.label
+        div.sidebar-group-label {{ group.label }}
+      end
+      for item in group.items
+        if item.active
+          a.sidebar-item.active [href="{{ item.href }}"]
+            raw svg_icon(item.icon)
+            span {{ item.label }}
+        else
+          a.sidebar-item [href="{{ item.href }}"]
+            raw svg_icon(item.icon)
+            span {{ item.label }}
+        end
+      end
+  end
+  if plugin_sidebar_items
+    div.sidebar-group
+      div.sidebar-group-label 插件扩展
+      for entry in plugin_sidebar_items
+        if entry.active
+          a.sidebar-item.active [href="{{ entry.href }}"]
+            raw svg_icon(entry.icon)
+            span {{ entry.label }}
+        else
+          a.sidebar-item [href="{{ entry.href }}"]
+            raw svg_icon(entry.icon)
+            span {{ entry.label }}
+        end
+      end
+  end
+  div.sidebar-footer
+    if profile_active
+      a.sidebar-item.active [href="/admin/profile"]
+        raw svg_icon("user")
+        span 个人资料
+    else
+      a.sidebar-item [href="/admin/profile"]
+        raw svg_icon("user")
+        span 个人资料
+    end
+    form.sidebar-logout-form [method="POST"] [action="/admin/logout"]
+      button.sidebar-item [type="submit"]
+        raw svg_icon("log-out")
+        span 登出

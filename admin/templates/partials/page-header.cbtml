@@ -1,0 +1,6 @@
+div.page-header
+  h1.page-title {{ page_title }}
+  if header_actions
+    div
+      raw header_actions
+  end

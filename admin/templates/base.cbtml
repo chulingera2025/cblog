@@ -1,0 +1,60 @@
+html [lang="zh-CN"]
+  head
+    meta [charset="utf-8"]
+    meta [name="viewport"] [content="width=device-width,initial-scale=1"]
+    title {{ page_title }} - {{ site_title }} 管理后台
+    link [rel="stylesheet"] [href="/admin/static/admin.css"]
+  body
+    div.admin-layout
+      include partials/sidebar
+      main.admin-main
+        div.admin-content
+          slot content
+    div#toast-container.toast-container
+    script
+      function showToast(msg, type) {
+          type = type || 'info';
+          var container = document.getElementById('toast-container');
+          var el = document.createElement('div');
+          el.className = 'toast toast-' + type;
+          el.textContent = msg;
+          container.appendChild(el);
+          setTimeout(function() {
+              el.style.animation = 'toast-out 300ms ease forwards';
+              setTimeout(function() { el.remove(); }, 300);
+          }, 3000);
+      }
+      (function() {
+          var params = new URLSearchParams(window.location.search);
+          var msg = params.get('toast_msg');
+          var type = params.get('toast_type') || 'success';
+          if (msg) {
+              showToast(decodeURIComponent(msg), type);
+              var url = new URL(window.location);
+              url.searchParams.delete('toast_msg');
+              url.searchParams.delete('toast_type');
+              window.history.replaceState({}, '', url);
+          }
+      })();
+    script
+      function confirmAction(title, message, formEl) {
+          var backdrop = document.createElement('div');
+          backdrop.className = 'modal-backdrop';
+          backdrop.innerHTML =
+              '<div class="modal">' +
+                  '<div class="modal-title">' + title + '</div>' +
+                  '<div class="modal-body">' + message + '</div>' +
+                  '<div class="modal-actions">' +
+                      '<button class="btn btn-secondary" id="modal-cancel">取消</button>' +
+                      '<button class="btn btn-danger" id="modal-confirm">确认</button>' +
+                  '</div>' +
+              '</div>';
+          document.body.appendChild(backdrop);
+          document.getElementById('modal-cancel').onclick = function() { backdrop.remove(); };
+          document.getElementById('modal-confirm').onclick = function() {
+              backdrop.remove();
+              formEl.submit();
+          };
+          backdrop.onclick = function(e) { if (e.target === backdrop) backdrop.remove(); };
+      }
+    slot extra_scripts

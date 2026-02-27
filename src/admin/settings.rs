@@ -3,6 +3,7 @@ use axum::extract::{Form, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use sqlx::SqlitePool;
+use std::path::Path;
 
 use crate::admin::layout::{admin_page, html_escape, PageContext};
 use crate::state::AppState;
@@ -55,6 +56,26 @@ impl SiteSettings {
         }
         Ok(())
     }
+
+    /// 同步加载站点设置（用于 CLI build 等无 async runtime 的场景）
+    pub fn load_sync(db_path: &Path) -> Self {
+        if !db_path.exists() {
+            return Self::default();
+        }
+        let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return Self::default();
+        };
+        rt.block_on(async {
+            let db_url = format!("sqlite:{}?mode=ro", db_path.display());
+            let Ok(pool) = sqlx::SqlitePool::connect(&db_url).await else {
+                return Self::default();
+            };
+            Self::load(&pool).await.unwrap_or_default()
+        })
+    }
 }
 
 /// 从 AppState 获取站点标题，优先使用 DB 设置，fallback 到 config
@@ -64,6 +85,16 @@ pub async fn get_site_title(state: &AppState) -> String {
         state.config.site.title.clone()
     } else {
         settings.site_title.clone()
+    }
+}
+
+/// 从 AppState 获取站点 URL，优先使用 DB 设置，fallback 到 config
+pub async fn get_site_url(state: &AppState) -> String {
+    let settings = state.site_settings.read().await;
+    if settings.site_url.is_empty() {
+        state.config.site.url.clone()
+    } else {
+        settings.site_url.clone()
     }
 }
 

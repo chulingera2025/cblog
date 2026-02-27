@@ -29,6 +29,7 @@ pub fn generate_pages(
             "next_post": next,
             "page": {
                 "title": post.title,
+                "description": post.excerpt,
                 "url": format!("/posts/{}/", post.slug),
                 "type": "post",
             },
@@ -73,6 +74,7 @@ pub fn generate_pages(
                 "pagination": pagination,
                 "page": {
                     "title": if page_num == 1 { config.site.title.clone() } else { format!("第 {} 页", page_num) },
+                    "description": &config.site.description,
                     "url": if page_num == 1 { "/".into() } else { format!("/page/{}/", page_num) },
                     "type": "index",
                 },
@@ -91,6 +93,7 @@ pub fn generate_pages(
                 "posts": tag_posts,
                 "page": {
                     "title": format!("标签：{}", tag),
+                    "description": format!("包含标签「{}」的所有文章", tag),
                     "url": format!("/tags/{}/", slug),
                     "type": "tag",
                 },
@@ -109,6 +112,7 @@ pub fn generate_pages(
                 "posts": cat_posts,
                 "page": {
                     "title": format!("分类：{}", cat),
+                    "description": format!("分类「{}」下的所有文章", cat),
                     "url": format!("/category/{}/", slug),
                     "type": "category",
                 },
@@ -127,6 +131,7 @@ pub fn generate_pages(
                 "posts": archive_posts,
                 "page": {
                     "title": format!("{}年{}月", year, month),
+                    "description": format!("{}年{}月的文章归档", year, month),
                     "url": format!("/archive/{}/{:02}/", year, month),
                     "type": "archive",
                 },

@@ -103,7 +103,8 @@ fn main() -> anyhow::Result<()> {
                 &site_config.theme.active,
             );
             let db_posts = build::stages::load::fetch_db_posts_sync(&root.join("cblog.db"));
-            let _stats = build::run(&root, &site_config, clean, plugin_configs, theme_saved_config, db_posts)?;
+            let site_settings = admin::settings::SiteSettings::load_sync(&root.join("cblog.db"));
+            let _stats = build::run(&root, &site_config, clean, plugin_configs, theme_saved_config, db_posts, site_settings)?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;

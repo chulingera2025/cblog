@@ -3,6 +3,7 @@ use crate::build::incremental::{BuildStats, HashCache};
 use crate::build::stages;
 use crate::build::stages::load::DbPost;
 use crate::config::SiteConfig;
+use crate::admin::settings::SiteSettings;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
@@ -39,6 +40,7 @@ pub fn execute(
     plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
     theme_saved_config: HashMap<String, serde_json::Value>,
     db_posts: Vec<DbPost>,
+    site_settings: SiteSettings,
 ) -> Result<BuildStats> {
     tracing::info!("开始构建...");
     let start = std::time::Instant::now();
@@ -110,7 +112,7 @@ pub fn execute(
     }
 
     // 阶段 5: page.render - 渲染所有页面
-    stages::render::render_pages(project_root, config, &pages, &theme_saved_config)?;
+    stages::render::render_pages(project_root, config, &pages, &theme_saved_config, &site_settings)?;
 
     if let Some(ref eng) = engine {
         eng.hooks.call_action(&eng.lua, "after_render", &ctx)?;

@@ -1,3 +1,4 @@
+use crate::admin::settings::SiteSettings;
 use crate::build::stages::generate::RenderPage;
 use crate::cbtml;
 use crate::config::SiteConfig;
@@ -15,6 +16,7 @@ pub fn render_pages(
     config: &SiteConfig,
     pages: &[RenderPage],
     theme_config: &HashMap<String, serde_json::Value>,
+    site_settings: &SiteSettings,
 ) -> Result<()> {
     let output_dir = project_root.join(&config.build.output_dir);
     let themes_dir = project_root.join("themes");
@@ -23,19 +25,37 @@ pub fn render_pages(
     // 预编译所有 cbtml 模板为 MiniJinja 模板字符串
     let compiled_templates = compile_all_templates(&themes_dir, active_theme)?;
 
+    // DB 非空值优先，否则 fallback 到 toml
+    let site_url = if site_settings.site_url.is_empty() {
+        &config.site.url
+    } else {
+        &site_settings.site_url
+    };
+
     let mut env = Environment::new();
-    cbtml::filters::register_filters(&mut env, &config.site.url);
+    cbtml::filters::register_filters(&mut env, site_url);
 
     // 将编译后的模板逐个添加到环境中
     for (name, source) in &compiled_templates {
         env.add_template_owned(name.clone(), source.clone())?;
     }
 
+    let site_title = if site_settings.site_title.is_empty() {
+        &config.site.title
+    } else {
+        &site_settings.site_title
+    };
+    let site_subtitle = if site_settings.site_subtitle.is_empty() {
+        &config.site.subtitle
+    } else {
+        &site_settings.site_subtitle
+    };
+
     let site_ctx = serde_json::json!({
-        "title": config.site.title,
-        "subtitle": config.site.subtitle,
+        "title": site_title,
+        "subtitle": site_subtitle,
         "description": config.site.description,
-        "url": config.site.url,
+        "url": site_url,
         "language": config.site.language,
         "author": {
             "name": config.site.author.name,

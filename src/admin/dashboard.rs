@@ -86,6 +86,7 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
         sidebar_groups => sidebar_groups,
         plugin_sidebar_items => plugin_items,
         profile_active => false,
+        site_url => crate::admin::settings::get_site_url(&state).await,
         total_posts => total_posts,
         published_posts => published_posts,
         total_pages => total_pages,

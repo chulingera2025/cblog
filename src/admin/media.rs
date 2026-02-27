@@ -84,6 +84,7 @@ pub async fn list_media(
             "媒体库",
             "/admin/media",
             &crate::admin::settings::get_site_title(&state).await,
+            &crate::admin::settings::get_site_url(&state).await,
             &state.plugin_admin_pages,
         )
     };
@@ -99,6 +100,7 @@ pub async fn upload_page(State(state): State<AppState>) -> Html<String> {
         "上传文件",
         "/admin/media",
         &crate::admin::settings::get_site_title(&state).await,
+        &crate::admin::settings::get_site_url(&state).await,
         &state.plugin_admin_pages,
     );
 
@@ -432,6 +434,7 @@ fn render_upload_error(state: &AppState, message: &str) -> axum::response::Respo
         "上传失败",
         "/admin/media",
         &state.config.site.title,
+        &state.config.site.url,
         &state.plugin_admin_pages,
     );
     let ctx = context! {

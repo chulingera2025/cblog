@@ -72,11 +72,8 @@ slot extra_scripts
                 btn.disabled = true;
                 btn.textContent = '构建中...';
             } else if (event.type === 'Finished') {
-                statusEl.innerHTML = '<span class="badge badge-success">完成: '
-                    + event.total_pages + ' 页, '
-                    + event.rebuilt + ' 重建, '
-                    + event.cached + ' 缓存, '
-                    + event.total_ms + 'ms</span>';
+                statusEl.innerHTML = '<span class="badge badge-success">构建成功</span>';
+                setTimeout(function() { statusEl.innerHTML = ''; }, 3000);
                 btn.disabled = false;
                 btn.textContent = '触发构建';
                 var now = fmtTime(new Date());
@@ -89,7 +86,8 @@ slot extra_scripts
                     + '<td></td>';
                 tbody.insertBefore(tr, tbody.firstChild);
             } else if (event.type === 'Failed') {
-                statusEl.innerHTML = '<span class="badge badge-danger">失败: ' + escHtml(event.error) + '</span>';
+                statusEl.innerHTML = '<span class="badge badge-danger">构建失败</span>';
+                setTimeout(function() { statusEl.innerHTML = ''; }, 3000);
                 btn.disabled = false;
                 btn.textContent = '触发构建';
                 var now = fmtTime(new Date());
@@ -100,7 +98,7 @@ slot extra_scripts
                     + '<td><span class="badge badge-danger">失败</span></td>'
                     + '<td>-</td>'
                     + '<td>' + now + '</td>'
-                    + '<td><span class="badge badge-danger">' + escHtml(errMsg) + '</span></td>';
+                    + '<td><span class="badge badge-danger" title="' + escHtml(event.error || '') + '">' + escHtml(errMsg) + '</span></td>';
                 tbody.insertBefore(tr, tbody.firstChild);
             }
         };

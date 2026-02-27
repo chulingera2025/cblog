@@ -35,6 +35,9 @@ aside.admin-sidebar
       end
   end
   div.sidebar-footer
+    a.sidebar-item [href="{{ site_url }}"] [target="_blank"]
+      raw svg_icon("external-link")
+      span 访问站点
     if profile_active
       a.sidebar-item.active [href="/admin/profile"]
         raw svg_icon("user")

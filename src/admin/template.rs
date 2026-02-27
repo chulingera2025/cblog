@@ -168,6 +168,7 @@ pub fn build_admin_context(
     page_title: &str,
     active_path: &str,
     site_title: &str,
+    site_url: &str,
     plugin_sidebar_items: &[PluginSidebarEntry],
 ) -> Value {
     let sidebar_groups: Vec<Value> = SIDEBAR_GROUPS
@@ -207,6 +208,7 @@ pub fn build_admin_context(
     context! {
         page_title => page_title,
         site_title => site_title,
+        site_url => site_url,
         sidebar_groups => sidebar_groups,
         plugin_sidebar_items => if plugin_items.is_empty() { None } else { Some(plugin_items) },
         profile_active => is_active(active_path, "/admin/profile"),

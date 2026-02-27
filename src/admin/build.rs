@@ -63,6 +63,7 @@ pub async fn build_history(State(state): State<AppState>) -> Html<String> {
             "构建管理",
             "/admin/build",
             &crate::admin::settings::get_site_title(&state).await,
+            &crate::admin::settings::get_site_url(&state).await,
             &state.plugin_admin_pages,
         )
     };
@@ -151,13 +152,14 @@ pub async fn spawn_build(state: &AppState, trigger: &str) {
     let project_root = state.project_root.clone();
     let db = state.db.clone();
     let build_events = state.build_events.clone();
+    let site_settings = state.site_settings.read().await.clone();
 
     let started_at = chrono::Utc::now().to_rfc3339();
 
     let build_root = project_root.clone();
     let build_config = Arc::clone(&config);
     let result = tokio::task::spawn_blocking(move || {
-        crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config, db_posts)
+        crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config, db_posts, site_settings)
     })
     .await;
 

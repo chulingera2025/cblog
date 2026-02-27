@@ -65,7 +65,6 @@ fn collect_plugin_admin_pages(project_root: &std::path::Path, config: &SiteConfi
         if let Ok(toml) = load_plugin_toml(&toml_path) {
             for page in &toml.admin.pages {
                 pages.push(PluginSidebarEntry {
-                    plugin_name: name.clone(),
                     label: page.label.clone(),
                     href: format!("/admin/ext/{}/{}", name, page.slug),
                     icon: page.icon.clone(),

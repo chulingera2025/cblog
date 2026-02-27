@@ -1,23 +1,12 @@
-import { Editor } from 'https://esm.sh/@tiptap/core@2.27.2'
-import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.27.2'
-import Link from 'https://esm.sh/@tiptap/extension-link@2.27.2'
-import Image from 'https://esm.sh/@tiptap/extension-image@2.27.2'
-import Table from 'https://esm.sh/@tiptap/extension-table@2.27.2'
-import TableRow from 'https://esm.sh/@tiptap/extension-table-row@2.27.2'
-import TableCell from 'https://esm.sh/@tiptap/extension-table-cell@2.27.2'
-import TableHeader from 'https://esm.sh/@tiptap/extension-table-header@2.27.2'
-import Underline from 'https://esm.sh/@tiptap/extension-underline@2.27.2'
-import TextAlign from 'https://esm.sh/@tiptap/extension-text-align@2.27.2'
-import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.27.2'
-import TextStyle from 'https://esm.sh/@tiptap/extension-text-style@2.27.2'
-import Color from 'https://esm.sh/@tiptap/extension-color@2.27.2'
-import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2.27.2'
-import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2.27.2'
-import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2.27.2'
-import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2.27.2'
-import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2.27.2'
-import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2.27.2'
-import Typography from 'https://esm.sh/@tiptap/extension-typography@2.27.2'
+import { Editor } from 'https://esm.sh/@tiptap/core@3'
+import StarterKit from 'https://esm.sh/@tiptap/starter-kit@3'
+import Image from 'https://esm.sh/@tiptap/extension-image@3'
+import { Table, TableRow, TableCell, TableHeader } from 'https://esm.sh/@tiptap/extension-table@3'
+import TextAlign from 'https://esm.sh/@tiptap/extension-text-align@3'
+import { Placeholder, CharacterCount } from 'https://esm.sh/@tiptap/extensions@3'
+import { TaskList, TaskItem } from 'https://esm.sh/@tiptap/extension-list@3'
+import Subscript from 'https://esm.sh/@tiptap/extension-subscript@3'
+import Superscript from 'https://esm.sh/@tiptap/extension-superscript@3'
 
 const editorElement = document.getElementById('editor');
 const contentDataEl = document.getElementById('editor-content-data');
@@ -30,25 +19,21 @@ try {
     editor = new Editor({
         element: editorElement,
         extensions: [
-            StarterKit,
-            Link.configure({ openOnClick: false }),
+            StarterKit.configure({
+                link: { openOnClick: false },
+            }),
             Image,
             Table.configure({ resizable: true }),
             TableRow,
             TableCell,
             TableHeader,
-            Underline,
             TextAlign.configure({ types: ['heading', 'paragraph'] }),
             Placeholder.configure({ placeholder: '开始编写内容...' }),
-            TextStyle,
-            Color,
-            Highlight.configure({ multicolor: true }),
             TaskList,
             TaskItem.configure({ nested: true }),
             Subscript,
             Superscript,
             CharacterCount,
-            Typography,
         ],
         content: initialContent,
         onUpdate({ editor }) {
@@ -101,9 +86,8 @@ async function uploadImage(file) {
 }
 
 // 编辑器拖拽上传
-const editorEl = document.getElementById('editor');
-if (editorEl && editor) {
-    editorEl.addEventListener('drop', async (e) => {
+if (editorElement && editor) {
+    editorElement.addEventListener('drop', async (e) => {
         const files = e.dataTransfer?.files;
         if (files?.length && files[0].type.startsWith('image/')) {
             e.preventDefault();
@@ -115,12 +99,12 @@ if (editorEl && editor) {
             }
         }
     });
-    editorEl.addEventListener('dragover', (e) => {
+    editorElement.addEventListener('dragover', (e) => {
         if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
     });
 
     // 编辑器粘贴上传
-    editorEl.addEventListener('paste', async (e) => {
+    editorElement.addEventListener('paste', async (e) => {
         const items = e.clipboardData?.items;
         if (!items) return;
         for (const item of items) {

@@ -2,6 +2,7 @@ use crate::admin::layout::PluginSidebarEntry;
 use crate::build::events::BuildEvent;
 use crate::config::SiteConfig;
 use anyhow::Result;
+use minijinja::Environment;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,6 +20,8 @@ pub struct AppState {
     pub login_limiter: Arc<std::sync::Mutex<HashMap<String, Vec<Instant>>>>,
     /// 插件注册的后台侧边栏页面
     pub plugin_admin_pages: Vec<PluginSidebarEntry>,
+    /// 后台模板渲染环境
+    pub admin_env: Arc<Environment<'static>>,
 }
 
 impl AppState {
@@ -38,6 +41,9 @@ impl AppState {
         // 扫描已启用插件的 admin 页面声明
         let plugin_admin_pages = collect_plugin_admin_pages(&project_root, &config);
 
+        // 构建后台模板渲染环境
+        let admin_env = crate::admin::template::build_admin_env(&project_root, &config.site.url)?;
+
         Ok(Self {
             db: pool,
             config: Arc::new(config),
@@ -45,6 +51,7 @@ impl AppState {
             build_events,
             login_limiter: Arc::new(std::sync::Mutex::new(HashMap::new())),
             plugin_admin_pages,
+            admin_env: Arc::new(admin_env),
         })
     }
 }

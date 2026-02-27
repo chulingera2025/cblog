@@ -15,7 +15,7 @@ mod state;
 mod theme;
 
 #[derive(Parser)]
-#[command(name = "cblog", about = "Rust + Lua 博客引擎")]
+#[command(name = "cblog", about = "Rust + Lua 博客引擎", version = long_version())]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -238,4 +238,18 @@ fn find_pid_by_inode(target_inode: &str) -> Option<String> {
         }
     }
     None
+}
+
+const fn long_version() -> &'static str {
+    concat!(
+        env!("CARGO_PKG_VERSION"),
+        "\ncommit:  ",
+        env!("CBLOG_GIT_COMMIT"),
+        "\nbuild:   ",
+        env!("CBLOG_BUILD_TIME"),
+        "\ntarget:  ",
+        env!("CBLOG_BUILD_TARGET"),
+        "\nprofile: ",
+        env!("CBLOG_BUILD_PROFILE"),
+    )
 }

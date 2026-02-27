@@ -352,6 +352,11 @@ body {
     padding: 32px 40px;
 }
 
+.admin-content-wide {
+    max-width: none;
+    padding: 24px 32px;
+}
+
 /* ── Sidebar ── */
 .sidebar-brand {
     display: flex;
@@ -1001,6 +1006,7 @@ a:hover {
     .admin-sidebar { width: 200px; }
     .admin-main { margin-left: 200px; }
     .admin-content { padding: 20px 16px; }
+    .admin-content-wide { padding: 16px 12px; }
     .stat-grid { grid-template-columns: repeat(2, 1fr); }
     .form-row { grid-template-columns: 1fr; }
 }
@@ -1455,6 +1461,10 @@ import Color from 'https://esm.sh/@tiptap/extension-color@2'
 import Highlight from 'https://esm.sh/@tiptap/extension-highlight@2'
 import TaskList from 'https://esm.sh/@tiptap/extension-task-list@2'
 import TaskItem from 'https://esm.sh/@tiptap/extension-task-item@2'
+import Subscript from 'https://esm.sh/@tiptap/extension-subscript@2'
+import Superscript from 'https://esm.sh/@tiptap/extension-superscript@2'
+import CharacterCount from 'https://esm.sh/@tiptap/extension-character-count@2'
+import Typography from 'https://esm.sh/@tiptap/extension-typography@2'
 
 const contentDataEl = document.getElementById('editor-content-data');
 const initialContent = contentDataEl ? JSON.parse(contentDataEl.textContent) : '';
@@ -1477,15 +1487,29 @@ const editor = new Editor({
         Highlight.configure({ multicolor: true }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        Subscript,
+        Superscript,
+        CharacterCount,
+        Typography,
     ],
     content: initialContent,
     onUpdate({ editor }) {
         document.getElementById('content-input').value = editor.getHTML();
+        updateCharCount(editor);
     },
 });
 
+function updateCharCount(ed) {
+    const el = document.getElementById('editor-char-count');
+    if (!el) return;
+    const chars = ed.storage.characterCount.characters();
+    const words = ed.storage.characterCount.words();
+    el.textContent = words + ' 字 / ' + chars + ' 字符';
+}
+
 // 初始化时同步一次
 document.getElementById('content-input').value = editor.getHTML();
+updateCharCount(editor);
 
 // 表单提交时确保最新内容
 document.querySelectorAll('form').forEach(form => {
@@ -1559,6 +1583,8 @@ if (toolbar) {
                 case 'underline': editor.chain().focus().toggleUnderline().run(); break;
                 case 'strike': editor.chain().focus().toggleStrike().run(); break;
                 case 'code': editor.chain().focus().toggleCode().run(); break;
+                case 'subscript': editor.chain().focus().toggleSubscript().run(); break;
+                case 'superscript': editor.chain().focus().toggleSuperscript().run(); break;
                 case 'bulletList': editor.chain().focus().toggleBulletList().run(); break;
                 case 'orderedList': editor.chain().focus().toggleOrderedList().run(); break;
                 case 'taskList': editor.chain().focus().toggleTaskList().run(); break;
@@ -1614,6 +1640,8 @@ if (toolbar) {
                 case 'underline': isActive = editor.isActive('underline'); break;
                 case 'strike': isActive = editor.isActive('strike'); break;
                 case 'code': isActive = editor.isActive('code'); break;
+                case 'subscript': isActive = editor.isActive('subscript'); break;
+                case 'superscript': isActive = editor.isActive('superscript'); break;
                 case 'bulletList': isActive = editor.isActive('bulletList'); break;
                 case 'orderedList': isActive = editor.isActive('orderedList'); break;
                 case 'taskList': isActive = editor.isActive('taskList'); break;
@@ -1851,6 +1879,8 @@ pub fn editor_toolbar() -> &'static str {
         <button type="button" data-cmd="underline" title="下划线"><u>U</u></button>
         <button type="button" data-cmd="strike" title="删除线"><s>S</s></button>
         <button type="button" data-cmd="code" title="行内代码">&lt;/&gt;</button>
+        <button type="button" data-cmd="subscript" title="下标">X<sub>2</sub></button>
+        <button type="button" data-cmd="superscript" title="上标">X<sup>2</sup></button>
     </div>
     <div class="toolbar-divider"></div>
     <div class="toolbar-group">
@@ -1878,6 +1908,7 @@ pub fn editor_toolbar() -> &'static str {
         <button type="button" data-cmd="undo" title="撤销">↩</button>
         <button type="button" data-cmd="redo" title="重做">↪</button>
     </div>
+    <div style="margin-left:auto;font-size:12px;color:var(--c-text-secondary);padding:0 8px;white-space:nowrap;" id="editor-char-count"></div>
 </div>"#
 }
 
@@ -1905,7 +1936,7 @@ pub fn admin_editor_page(
 <div class="admin-layout">
 {sidebar}
 <main class="admin-main">
-<div class="admin-content">
+<div class="admin-content admin-content-wide">
 {body}
 </div>
 </main>

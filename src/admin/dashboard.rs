@@ -1,7 +1,8 @@
 use axum::extract::State;
 use axum::response::Html;
+use minijinja::context;
 
-use crate::admin::layout::{admin_page, html_escape, PageContext};
+use crate::admin::template::render_admin;
 use crate::state::AppState;
 
 pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
@@ -57,69 +58,43 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     .await
     .unwrap_or_default();
 
-    let mut post_rows = String::new();
-    for p in &recent_posts {
-        let (badge_class, status_label) = match p.status.as_str() {
-            "published" => ("badge-success", "已发布"),
-            "draft" => ("badge-warning", "草稿"),
-            _ => ("badge-neutral", p.status.as_str()),
-        };
-        post_rows.push_str(&format!(
-            r#"<tr>
-                <td><a href="/admin/posts/{id}">{title}</a></td>
-                <td><span class="badge {badge_class}">{status_label}</span></td>
-                <td>{updated_at}</td>
-            </tr>"#,
-            id = p.id,
-            title = html_escape(&p.title),
-            badge_class = badge_class,
-            status_label = status_label,
-            updated_at = crate::admin::layout::format_datetime(&p.updated_at),
-        ));
-    }
+    // 构建模板需要的文章列表，预处理状态标签和 badge 样式类名
+    let posts_ctx: Vec<_> = recent_posts
+        .iter()
+        .map(|p| {
+            let (badge_class, status_label) = match p.status.as_str() {
+                "published" => ("badge-success", "已发布"),
+                "draft" => ("badge-warning", "草稿"),
+                _ => ("badge-neutral", p.status.as_str()),
+            };
+            context! {
+                id => p.id,
+                title => p.title,
+                badge_class => badge_class,
+                status_label => status_label,
+                updated_at => crate::admin::layout::format_datetime(&p.updated_at),
+            }
+        })
+        .collect();
 
-    let body = format!(
-        r#"<div class="page-header">
-            <h1 class="page-title">仪表盘</h1>
-        </div>
-        <div class="stat-grid">
-            <div class="stat-card">
-                <div class="stat-value">{total_posts}</div>
-                <div class="stat-label">文章总数</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{published_posts}</div>
-                <div class="stat-label">已发布文章</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{total_pages}</div>
-                <div class="stat-label">页面总数</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">{total_media}</div>
-                <div class="stat-label">媒体文件</div>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title">最近文章</h2>
-            </div>
-            <table>
-                <thead><tr><th>标题</th><th>状态</th><th>更新时间</th></tr></thead>
-                <tbody>{post_rows}</tbody>
-            </table>
-        </div>"#,
-        total_posts = total_posts,
-        published_posts = published_posts,
-        total_pages = total_pages,
-        total_media = total_media,
-        post_rows = post_rows,
-    );
+    let sidebar_groups = crate::admin::layout::sidebar_groups_value("/admin");
+    let plugin_items = crate::admin::layout::plugin_sidebar_value(&state.plugin_admin_pages, "/admin");
 
-    let ctx = PageContext {
-        site_title: state.config.site.title.clone(),
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
+    let ctx = context! {
+        page_title => "仪表盘",
+        site_title => &state.config.site.title,
+        sidebar_groups => sidebar_groups,
+        plugin_sidebar_items => plugin_items,
+        profile_active => false,
+        total_posts => total_posts,
+        published_posts => published_posts,
+        total_pages => total_pages,
+        total_media => total_media,
+        recent_posts => posts_ctx,
     };
 
-    Html(admin_page("仪表盘", "/admin", &body, &ctx))
+    let html = render_admin(&state.admin_env, "dashboard.cbtml", ctx)
+        .unwrap_or_else(|e| format!("模板渲染失败: {e}"));
+
+    Html(html)
 }

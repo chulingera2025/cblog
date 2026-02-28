@@ -32,6 +32,8 @@ pub struct AppState {
     pub installed: Arc<AtomicBool>,
     /// 后台模板渲染环境
     pub admin_env: Arc<Environment<'static>>,
+    /// 实际使用的 JWT 密钥（优先配置文件，其次数据库持久化自动生成）
+    pub jwt_secret: Arc<String>,
 }
 
 impl AppState {
@@ -48,6 +50,9 @@ impl AppState {
 
         // 将 posts.meta 中的 tags/category 迁移到关联表（幂等操作）
         migrate_post_taxonomy(&pool).await;
+
+        // 解析 JWT secret：配置文件显式设置 > 数据库持久化 > 自动生成
+        let jwt_secret = resolve_jwt_secret(&config.auth.jwt_secret, &pool).await?;
 
         let (build_events, _) = broadcast::channel::<BuildEvent>(64);
 
@@ -92,8 +97,52 @@ impl AppState {
             site_settings: Arc::new(tokio::sync::RwLock::new(site_settings)),
             installed: Arc::new(AtomicBool::new(installed)),
             admin_env: Arc::new(admin_env),
+            jwt_secret: Arc::new(jwt_secret),
         })
     }
+}
+
+const DEFAULT_JWT_SECRET: &str = "CHANGE_ME_IN_PRODUCTION";
+
+/// 配置文件显式设置 > 数据库持久化 > 自动生成新密钥
+async fn resolve_jwt_secret(config_secret: &str, db: &SqlitePool) -> Result<String> {
+    if config_secret != DEFAULT_JWT_SECRET && !config_secret.is_empty() {
+        return Ok(config_secret.to_owned());
+    }
+
+    tracing::warn!("JWT secret 未配置或为默认值，将使用自动生成的安全密钥");
+
+    // 尝试从数据库读取已持久化的密钥
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM site_settings WHERE key = 'jwt_secret'")
+            .fetch_optional(db)
+            .await?;
+
+    if let Some((secret,)) = existing {
+        return Ok(secret);
+    }
+
+    // 生成新密钥并持久化到数据库
+    let secret = generate_random_secret();
+    sqlx::query(
+        "INSERT INTO site_settings (key, value) VALUES ('jwt_secret', ?) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(&secret)
+    .execute(db)
+    .await?;
+
+    tracing::info!("已自动生成 JWT secret 并持久化到数据库");
+    Ok(secret)
+}
+
+fn generate_random_secret() -> String {
+    use argon2::password_hash::rand_core::{OsRng, RngCore};
+
+    let mut bytes = [0u8; 64];
+    OsRng.fill_bytes(&mut bytes);
+    // 转为 hex 字符串（128 字符）
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn collect_plugin_admin_pages(project_root: &std::path::Path, config: &SiteConfig) -> Vec<PluginSidebarEntry> {
@@ -117,6 +166,7 @@ fn collect_plugin_admin_pages(project_root: &std::path::Path, config: &SiteConfi
 
 /// 从 posts.meta JSON 中的 tags/category 迁移到独立关联表
 /// 仅对尚未在关联表中存在的文章做迁移，已有关联的跳过
+/// 整个迁移在单个事务中完成，确保数据一致性
 async fn migrate_post_taxonomy(pool: &SqlitePool) {
     use sqlx::Row;
 
@@ -124,6 +174,18 @@ async fn migrate_post_taxonomy(pool: &SqlitePool) {
         .fetch_all(pool)
         .await
         .unwrap_or_default();
+
+    if rows.is_empty() {
+        return;
+    }
+
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!("迁移事务开启失败：{e}");
+            return;
+        }
+    };
 
     for row in rows {
         let post_id: String = row.get("id");
@@ -135,14 +197,14 @@ async fn migrate_post_taxonomy(pool: &SqlitePool) {
         let tags: Vec<&str> = tags_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
         for tag_name in tags {
             let slug = generate_slug(tag_name);
-            let tag_id = ensure_tag(pool, tag_name, &slug).await;
+            let tag_id = ensure_tag(&mut tx, tag_name, &slug).await;
             if let Some(tid) = tag_id {
                 let _ = sqlx::query(
                     "INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)",
                 )
                 .bind(&post_id)
                 .bind(&tid)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await;
             }
         }
@@ -151,25 +213,29 @@ async fn migrate_post_taxonomy(pool: &SqlitePool) {
         let category_str = meta["category"].as_str().unwrap_or("").trim();
         if !category_str.is_empty() {
             let slug = generate_slug(category_str);
-            let cat_id = ensure_category(pool, category_str, &slug).await;
+            let cat_id = ensure_category(&mut tx, category_str, &slug).await;
             if let Some(cid) = cat_id {
                 let _ = sqlx::query(
                     "INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)",
                 )
                 .bind(&post_id)
                 .bind(&cid)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await;
             }
         }
     }
+
+    if let Err(e) = tx.commit().await {
+        tracing::error!("迁移事务提交失败：{e}");
+    }
 }
 
-async fn ensure_tag(pool: &SqlitePool, name: &str, slug: &str) -> Option<String> {
+async fn ensure_tag(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, name: &str, slug: &str) -> Option<String> {
     let existing: Option<(String,)> =
         sqlx::query_as("SELECT id FROM tags WHERE name = ?")
             .bind(name)
-            .fetch_optional(pool)
+            .fetch_optional(&mut **tx)
             .await
             .ok()?;
 
@@ -184,17 +250,17 @@ async fn ensure_tag(pool: &SqlitePool, name: &str, slug: &str) -> Option<String>
         .bind(name)
         .bind(slug)
         .bind(&now)
-        .execute(pool)
+        .execute(&mut **tx)
         .await
         .ok()?;
     Some(id)
 }
 
-async fn ensure_category(pool: &SqlitePool, name: &str, slug: &str) -> Option<String> {
+async fn ensure_category(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, name: &str, slug: &str) -> Option<String> {
     let existing: Option<(String,)> =
         sqlx::query_as("SELECT id FROM categories WHERE name = ?")
             .bind(name)
-            .fetch_optional(pool)
+            .fetch_optional(&mut **tx)
             .await
             .ok()?;
 
@@ -209,7 +275,7 @@ async fn ensure_category(pool: &SqlitePool, name: &str, slug: &str) -> Option<St
         .bind(name)
         .bind(slug)
         .bind(&now)
-        .execute(pool)
+        .execute(&mut **tx)
         .await
         .ok()?;
     Some(id)

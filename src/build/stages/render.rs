@@ -10,11 +10,11 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
-/// 渲染所有页面到 public/ 目录
+/// 渲染页面到 public/ 目录
 pub fn render_pages(
     project_root: &Path,
     config: &SiteConfig,
-    pages: &[RenderPage],
+    pages: &[&RenderPage],
     theme_config: &HashMap<String, serde_json::Value>,
     site_settings: &SiteSettings,
 ) -> Result<()> {

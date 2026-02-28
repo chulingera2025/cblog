@@ -8,6 +8,7 @@ use std::path::Path;
 use ulid::Ulid;
 
 /// 数据库文章的简化结构，用于从异步上下文传递给同步构建函数
+#[derive(Clone)]
 pub struct DbPost {
     pub id: String,
     pub slug: String,

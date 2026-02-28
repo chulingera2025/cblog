@@ -159,7 +159,14 @@ pub async fn spawn_build(state: &AppState, trigger: &str) {
     let build_root = project_root.clone();
     let build_config = Arc::clone(&config);
     let result = tokio::task::spawn_blocking(move || {
-        crate::build::run(&build_root, &build_config, false, plugin_configs, theme_saved_config, db_posts, site_settings)
+        crate::build::run(&build_root, &build_config, crate::build::BuildParams {
+            clean: false,
+            force: false,
+            plugin_configs,
+            theme_saved_config,
+            db_posts,
+            site_settings,
+        })
     })
     .await;
 

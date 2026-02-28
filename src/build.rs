@@ -12,18 +12,24 @@ use incremental::BuildStats;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// 构建运行参数
+pub struct BuildParams {
+    pub clean: bool,
+    pub force: bool,
+    pub plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
+    pub theme_saved_config: HashMap<String, serde_json::Value>,
+    pub db_posts: Vec<DbPost>,
+    pub site_settings: SiteSettings,
+}
+
 pub fn run(
     project_root: &Path,
     config: &SiteConfig,
-    clean: bool,
-    plugin_configs: HashMap<String, HashMap<String, serde_json::Value>>,
-    theme_saved_config: HashMap<String, serde_json::Value>,
-    db_posts: Vec<DbPost>,
-    site_settings: SiteSettings,
+    params: BuildParams,
 ) -> Result<BuildStats> {
     let output_dir = project_root.join(&config.build.output_dir);
 
-    if clean {
+    if params.clean {
         if output_dir.exists() {
             std::fs::remove_dir_all(&output_dir)?;
             tracing::info!("已清除输出目录：{}", output_dir.display());
@@ -37,7 +43,17 @@ pub fn run(
 
     std::fs::create_dir_all(&output_dir)?;
 
-    let stats = pipeline::execute(project_root, config, plugin_configs, theme_saved_config, db_posts, site_settings)?;
+    // clean 模式下缓存已被清除，等同于 force
+    let force = params.force || params.clean;
+    let stats = pipeline::execute(
+        project_root,
+        config,
+        params.plugin_configs,
+        params.theme_saved_config,
+        params.db_posts,
+        params.site_settings,
+        force,
+    )?;
 
     Ok(stats)
 }

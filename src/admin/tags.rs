@@ -1,9 +1,11 @@
 use axum::extract::{Form, Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
+use minijinja::context;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
-use crate::admin::layout::{admin_page, format_datetime, html_escape, svg_icon, PageContext};
+use crate::admin::layout;
+use crate::admin::template::render_admin;
 use crate::state::AppState;
 
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
@@ -38,20 +40,10 @@ fn generate_slug(name: &str) -> String {
         .join("-")
 }
 
-fn make_ctx(state: &AppState, site_title: String) -> PageContext {
-    PageContext {
-        site_title,
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
-    }
-}
-
 pub async fn list_tags(
     State(state): State<AppState>,
     Query(params): Query<ListQuery>,
 ) -> Html<String> {
-    let site_title = crate::admin::settings::get_site_title(&state).await;
-    let ctx = make_ctx(&state, site_title);
-
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i32 = 20;
     let offset = (page as i32 - 1) * per_page;
@@ -68,110 +60,72 @@ pub async fn list_tags(
     .await
     .unwrap_or_default();
 
-    let mut table_rows = String::new();
-    for row in &rows {
-        let id: &str = row.get("id");
-        let name: &str = row.get("name");
-        let slug: &str = row.get("slug");
-        let description: &str = row.get("description");
-        let post_count: i32 = row.get("post_count");
-        let created_at: &str = row.get("created_at");
+    let has_next = rows.len() as i32 == per_page;
 
-        table_rows.push_str(&format!(
-            r#"<tr>
-                <td><a href="/admin/tags/{id}">{name}</a></td>
-                <td>{slug}</td>
-                <td>{description}</td>
-                <td>{post_count}</td>
-                <td>{created_at}</td>
-                <td class="actions">
-                    <a href="/admin/tags/{id}" class="btn btn-secondary btn-sm">编辑</a>
-                    <form method="POST" action="/admin/tags/{id}/delete" style="display:inline;" onsubmit="confirmAction('删除标签', '确定要删除该标签吗？删除后文章关联将被移除。', this); return false;">
-                        <button type="submit" class="btn btn-danger btn-sm">删除</button>
-                    </form>
-                </td>
-            </tr>"#,
-            id = html_escape(id),
-            name = html_escape(name),
-            slug = html_escape(slug),
-            description = html_escape(description),
-            post_count = post_count,
-            created_at = format_datetime(created_at),
-        ));
-    }
+    let tags: Vec<minijinja::Value> = rows
+        .iter()
+        .map(|row| {
+            let id: &str = row.get("id");
+            let name: &str = row.get("name");
+            let slug: &str = row.get("slug");
+            let description: &str = row.get("description");
+            let post_count: i32 = row.get("post_count");
+            let created_at: &str = row.get("created_at");
 
-    let pagination = {
-        let mut p = String::new();
-        if page > 1 {
-            p.push_str(&format!(
-                r#"<a href="/admin/tags?page={}" class="btn btn-secondary btn-sm">上一页</a>"#,
-                page - 1
-            ));
-        }
-        if rows.len() as i32 == per_page {
-            p.push_str(&format!(
-                r#"<a href="/admin/tags?page={}" class="btn btn-secondary btn-sm">下一页</a>"#,
-                page + 1
-            ));
-        }
-        p
+            context! {
+                id => id,
+                name => name,
+                slug => slug,
+                description => description,
+                post_count => post_count,
+                created_at => layout::format_datetime(created_at),
+            }
+        })
+        .collect();
+
+    let total_pages = if has_next { page + 1 } else { page };
+    let active_path = "/admin/tags";
+    let sidebar_groups = layout::sidebar_groups_value(active_path);
+    let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, active_path);
+
+    let ctx = context! {
+        page_title => "标签管理",
+        site_title => crate::admin::settings::get_site_title(&state).await,
+        sidebar_groups => sidebar_groups,
+        plugin_sidebar_items => plugin_items,
+        profile_active => false,
+        mode => "list",
+        tags => tags,
+        current_page => page,
+        total_pages => total_pages,
+        base_url => "/admin/tags",
     };
 
-    let body = format!(
-        r#"<div class="page-header">
-    <h1 class="page-title">标签管理</h1>
-    <a href="/admin/tags/new" class="btn btn-primary">{icon_plus} 新建标签</a>
-</div>
-<div class="table-wrapper">
-    <table>
-        <thead><tr><th>名称</th><th>Slug</th><th>描述</th><th>文章数</th><th>创建时间</th><th>操作</th></tr></thead>
-        <tbody>{table_rows}</tbody>
-    </table>
-</div>
-<div class="pagination">{pagination}</div>"#,
-        icon_plus = svg_icon("plus"),
-        table_rows = table_rows,
-        pagination = pagination,
-    );
+    let html = render_admin(&state.admin_env, "tags.cbtml", ctx)
+        .unwrap_or_else(|e| format!("模板渲染失败: {e}"));
 
-    Html(admin_page("标签管理", "/admin/tags", &body, &ctx))
+    Html(html)
 }
 
 pub async fn new_tag_page(State(state): State<AppState>) -> Html<String> {
-    let site_title = crate::admin::settings::get_site_title(&state).await;
-    let ctx = make_ctx(&state, site_title);
+    let active_path = "/admin/tags";
+    let sidebar_groups = layout::sidebar_groups_value(active_path);
+    let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, active_path);
 
-    let body = format!(
-        r#"<a href="/admin/tags" class="page-back">{icon_back} 返回标签列表</a>
-<div class="page-header">
-    <h1 class="page-title">新建标签</h1>
-</div>
-<div class="card">
-    <div class="card-body">
-        <form method="POST" action="/admin/tags">
-            <div class="form-group">
-                <label class="form-label">名称</label>
-                <input type="text" name="name" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Slug（留空自动生成）</label>
-                <input type="text" name="slug" class="form-input">
-            </div>
-            <div class="form-group">
-                <label class="form-label">描述</label>
-                <textarea name="description" class="form-textarea" rows="3"></textarea>
-            </div>
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary">创建标签</button>
-                <a href="/admin/tags" class="btn btn-secondary">取消</a>
-            </div>
-        </form>
-    </div>
-</div>"#,
-        icon_back = svg_icon("arrow-left"),
-    );
+    let ctx = context! {
+        page_title => "新建标签",
+        site_title => crate::admin::settings::get_site_title(&state).await,
+        sidebar_groups => sidebar_groups,
+        plugin_sidebar_items => plugin_items,
+        profile_active => false,
+        back_url => "/admin/tags",
+        mode => "new",
+    };
 
-    Html(admin_page("新建标签", "/admin/tags", &body, &ctx))
+    let html = render_admin(&state.admin_env, "tags.cbtml", ctx)
+        .unwrap_or_else(|e| format!("模板渲染失败: {e}"));
+
+    Html(html)
 }
 
 pub async fn create_tag(
@@ -204,6 +158,11 @@ pub async fn create_tag(
         .into_response();
     }
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:create_tag").await;
+    });
+
     Redirect::to("/admin/tags?toast_msg=标签已创建&toast_type=success").into_response()
 }
 
@@ -211,9 +170,6 @@ pub async fn edit_tag_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
-    let site_title = crate::admin::settings::get_site_title(&state).await;
-    let ctx = make_ctx(&state, site_title);
-
     let row = sqlx::query_as::<_, Tag>(
         "SELECT id, name, slug, description, created_at FROM tags WHERE id = ?",
     )
@@ -223,50 +179,47 @@ pub async fn edit_tag_page(
     .ok()
     .flatten();
 
+    let active_path = "/admin/tags";
+    let sidebar_groups = layout::sidebar_groups_value(active_path);
+    let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, active_path);
+
     let Some(tag) = row else {
-        return Html(admin_page(
-            "标签不存在",
-            "/admin/tags",
-            r#"<div class="empty-state"><p>该标签不存在</p></div>"#,
-            &ctx,
-        ));
+        let ctx = context! {
+            page_title => "标签不存在",
+            site_title => crate::admin::settings::get_site_title(&state).await,
+            sidebar_groups => sidebar_groups,
+            plugin_sidebar_items => plugin_items,
+            profile_active => false,
+            mode => "not_found",
+        };
+        return Html(
+            render_admin(&state.admin_env, "tags.cbtml", ctx)
+                .unwrap_or_else(|e| format!("模板渲染失败: {e}")),
+        );
     };
 
-    let body = format!(
-        r#"<a href="/admin/tags" class="page-back">{icon_back} 返回标签列表</a>
-<div class="page-header">
-    <h1 class="page-title">编辑标签</h1>
-</div>
-<div class="card">
-    <div class="card-body">
-        <form method="POST" action="/admin/tags/{id}">
-            <div class="form-group">
-                <label class="form-label">名称</label>
-                <input type="text" name="name" value="{name}" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Slug</label>
-                <input type="text" name="slug" value="{slug}" class="form-input">
-            </div>
-            <div class="form-group">
-                <label class="form-label">描述</label>
-                <textarea name="description" class="form-textarea" rows="3">{description}</textarea>
-            </div>
-            <div class="form-group">
-                <button type="submit" class="btn btn-primary">保存修改</button>
-                <a href="/admin/tags" class="btn btn-secondary">取消</a>
-            </div>
-        </form>
-    </div>
-</div>"#,
-        icon_back = svg_icon("arrow-left"),
-        id = html_escape(&tag.id),
-        name = html_escape(&tag.name),
-        slug = html_escape(&tag.slug),
-        description = html_escape(&tag.description),
-    );
+    let tag_ctx = context! {
+        id => &tag.id,
+        name => &tag.name,
+        slug => &tag.slug,
+        description => &tag.description,
+    };
 
-    Html(admin_page("编辑标签", "/admin/tags", &body, &ctx))
+    let ctx = context! {
+        page_title => "编辑标签",
+        site_title => crate::admin::settings::get_site_title(&state).await,
+        sidebar_groups => sidebar_groups,
+        plugin_sidebar_items => plugin_items,
+        profile_active => false,
+        back_url => "/admin/tags",
+        mode => "edit",
+        tag => tag_ctx,
+    };
+
+    let html = render_admin(&state.admin_env, "tags.cbtml", ctx)
+        .unwrap_or_else(|e| format!("模板渲染失败: {e}"));
+
+    Html(html)
 }
 
 pub async fn update_tag(
@@ -297,6 +250,11 @@ pub async fn update_tag(
         .into_response();
     }
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:update_tag").await;
+    });
+
     Redirect::to("/admin/tags?toast_msg=标签已更新&toast_type=success").into_response()
 }
 
@@ -308,6 +266,11 @@ pub async fn delete_tag(
         .bind(&id)
         .execute(&state.db)
         .await;
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:delete_tag").await;
+    });
 
     Redirect::to("/admin/tags?toast_msg=标签已删除&toast_type=success")
 }

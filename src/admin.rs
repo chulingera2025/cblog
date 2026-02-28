@@ -157,12 +157,11 @@ async fn plugin_admin_page(
     State(state): State<AppState>,
     Path((plugin_name, slug)): Path<(String, String)>,
 ) -> Response {
-    let ctx = layout::PageContext {
-        site_title: settings::get_site_title(&state).await,
-        plugin_sidebar_items: state.plugin_admin_pages.clone(),
-    };
-
     let active_path = format!("/admin/ext/{plugin_name}/{slug}");
+    let sidebar_groups = layout::sidebar_groups_value(&active_path);
+    let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, &active_path);
+
+    let page_title = format!("{plugin_name} - {slug}");
 
     // 加载 CBTML 模板
     let template_path = state
@@ -175,16 +174,18 @@ async fn plugin_admin_page(
     let source = match std::fs::read_to_string(&template_path) {
         Ok(s) => s,
         Err(_) => {
-            let body = format!(
-                r#"<div class="empty-state"><p>插件页面模板不存在：{}</p></div>"#,
-                layout::html_escape(&template_path.display().to_string()),
-            );
-            return Html(layout::admin_page(
-                "页面未找到",
-                &active_path,
-                &body,
-                &ctx,
-            ))
+            let ctx = minijinja::context! {
+                page_title => &page_title,
+                site_title => settings::get_site_title(&state).await,
+                sidebar_groups => sidebar_groups,
+                plugin_sidebar_items => plugin_items,
+                profile_active => false,
+                empty_message => format!("插件页面模板不存在：{}", template_path.display()),
+            };
+            return Html(
+                template::render_admin(&state.admin_env, "plugin-page.cbtml", ctx)
+                    .unwrap_or_else(|e| format!("模板渲染失败: {e}")),
+            )
             .into_response();
         }
     };
@@ -194,12 +195,19 @@ async fn plugin_admin_page(
     let compiled = match crate::cbtml::compile(&source, &file_label) {
         Ok(t) => t,
         Err(e) => {
-            let body = format!(
-                r#"<div class="alert alert-error">CBTML 编译失败：{}</div>"#,
-                layout::html_escape(&e.to_string()),
-            );
-            return Html(layout::admin_page("编译错误", &active_path, &body, &ctx))
-                .into_response();
+            let ctx = minijinja::context! {
+                page_title => &page_title,
+                site_title => settings::get_site_title(&state).await,
+                sidebar_groups => sidebar_groups,
+                plugin_sidebar_items => plugin_items,
+                profile_active => false,
+                error_message => format!("CBTML 编译失败：{}", e),
+            };
+            return Html(
+                template::render_admin(&state.admin_env, "plugin-page.cbtml", ctx)
+                    .unwrap_or_else(|e| format!("模板渲染失败: {e}")),
+            )
+            .into_response();
         }
     };
 
@@ -227,12 +235,19 @@ async fn plugin_admin_page(
         Ok(tmpl) => match tmpl.render(&render_ctx) {
             Ok(html) => html,
             Err(e) => {
-                let body = format!(
-                    r#"<div class="alert alert-error">模板渲染失败：{}</div>"#,
-                    layout::html_escape(&e.to_string()),
-                );
-                return Html(layout::admin_page("渲染错误", &active_path, &body, &ctx))
-                    .into_response();
+                let ctx = minijinja::context! {
+                    page_title => &page_title,
+                    site_title => settings::get_site_title(&state).await,
+                    sidebar_groups => sidebar_groups,
+                    plugin_sidebar_items => plugin_items,
+                    profile_active => false,
+                    error_message => format!("模板渲染失败：{}", e),
+                };
+                return Html(
+                    template::render_admin(&state.admin_env, "plugin-page.cbtml", ctx)
+                        .unwrap_or_else(|e| format!("模板渲染失败: {e}")),
+                )
+                .into_response();
             }
         },
         Err(_) => {
@@ -240,12 +255,19 @@ async fn plugin_admin_page(
         }
     };
 
-    Html(layout::admin_page(
-        &format!("{plugin_name} - {slug}"),
-        &active_path,
-        &rendered,
-        &ctx,
-    ))
+    let ctx = minijinja::context! {
+        page_title => &page_title,
+        site_title => settings::get_site_title(&state).await,
+        sidebar_groups => sidebar_groups,
+        plugin_sidebar_items => plugin_items,
+        profile_active => false,
+        plugin_content => rendered,
+    };
+
+    Html(
+        template::render_admin(&state.admin_env, "plugin-page.cbtml", ctx)
+            .unwrap_or_else(|e| format!("模板渲染失败: {e}")),
+    )
     .into_response()
 }
 

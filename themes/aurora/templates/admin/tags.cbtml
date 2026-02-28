@@ -1,0 +1,72 @@
+extends base
+
+slot content
+  if mode == "list"
+    div.page-header
+      h1.page-title 标签管理
+      a.btn.btn-primary [href="/admin/tags/new"]
+        raw svg_icon("plus")
+        span  新建标签
+    div.table-wrapper
+      table
+        thead
+          tr
+            th 名称
+            th Slug
+            th 描述
+            th 文章数
+            th 创建时间
+            th 操作
+        tbody
+          for tag in tags
+            tr
+              td
+                a [href="/admin/tags/{{ tag.id }}"] {{ tag.name }}
+              td {{ tag.slug }}
+              td {{ tag.description }}
+              td {{ tag.post_count }}
+              td {{ tag.created_at }}
+              td.actions
+                a.btn.btn-secondary.btn-sm [href="/admin/tags/{{ tag.id }}"] 编辑
+                form [method="POST"] [action="/admin/tags/{{ tag.id }}/delete"] [style="display:inline;"] [onsubmit="confirmAction('删除标签', '确定要删除该标签吗？删除后文章关联将被移除。', this); return false;"]
+                  button.btn.btn-danger.btn-sm [type="submit"] 删除
+          end
+    include partials/pagination
+  else if mode == "new"
+    include partials/page-header
+    div.card
+      div.card-body
+        form [method="POST"] [action="/admin/tags"]
+          div.form-group
+            label.form-label 名称
+            input.form-input [type="text"] [name="name"] [required]
+          div.form-group
+            label.form-label Slug（留空自动生成）
+            input.form-input [type="text"] [name="slug"]
+          div.form-group
+            label.form-label 描述
+            textarea.form-textarea [name="description"] [rows="3"]
+          div.form-group
+            button.btn.btn-primary [type="submit"] 创建标签
+            a.btn.btn-secondary [href="/admin/tags"] 取消
+  else if mode == "edit"
+    include partials/page-header
+    div.card
+      div.card-body
+        form [method="POST"] [action="/admin/tags/{{ tag.id }}"]
+          div.form-group
+            label.form-label 名称
+            input.form-input [type="text"] [name="name"] [value="{{ tag.name }}"] [required]
+          div.form-group
+            label.form-label Slug
+            input.form-input [type="text"] [name="slug"] [value="{{ tag.slug }}"]
+          div.form-group
+            label.form-label 描述
+            textarea.form-textarea [name="description"] [rows="3"] {{ tag.description }}
+          div.form-group
+            button.btn.btn-primary [type="submit"] 保存修改
+            a.btn.btn-secondary [href="/admin/tags"] 取消
+  else if mode == "not_found"
+    div.empty-state
+      p 该标签不存在
+  end

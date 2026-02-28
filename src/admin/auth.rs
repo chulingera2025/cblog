@@ -108,9 +108,10 @@ fn decode_jwt(token: &str, jwt_secret: &str) -> Result<Claims> {
     Ok(data.claims)
 }
 
-fn build_cookie(name: &str, value: &str, max_age_secs: i64) -> String {
+fn build_cookie(name: &str, value: &str, max_age_secs: i64, secure: bool) -> String {
+    let secure_flag = if secure { "; Secure" } else { "" };
     format!(
-        "{name}={value}; HttpOnly; SameSite=Strict; Path=/admin; Max-Age={max_age_secs}"
+        "{name}={value}; HttpOnly; SameSite=Strict; Path=/admin; Max-Age={max_age_secs}{secure_flag}"
     )
 }
 
@@ -172,6 +173,7 @@ pub async fn login_submit(
                 &state.config.auth.session_name,
                 &token,
                 duration.as_secs() as i64,
+                state.is_https,
             );
             let mut resp = Redirect::to("/admin").into_response();
             resp.headers_mut()
@@ -223,7 +225,7 @@ pub async fn logout(State(state): State<AppState>, req: Request<axum::body::Body
                 .await;
         }
 
-    let clear_cookie = build_cookie(cookie_name, "", 0);
+    let clear_cookie = build_cookie(cookie_name, "", 0, state.is_https);
     let mut resp = Redirect::to("/admin/login").into_response();
     resp.headers_mut()
         .insert(SET_COOKIE, HeaderValue::from_str(&clear_cookie).unwrap());
@@ -282,6 +284,7 @@ pub async fn require_auth(
                     cookie_name,
                     &new_token,
                     total_duration.as_secs() as i64,
+                    state.is_https,
                 );
                 if let Ok(val) = HeaderValue::from_str(&cookie) {
                     resp.headers_mut().insert(SET_COOKIE, val);

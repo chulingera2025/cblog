@@ -247,6 +247,11 @@ pub async fn save_theme_settings(
     .execute(&state.db)
     .await;
 
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:save_theme").await;
+    });
+
     Redirect::to("/admin/theme")
 }
 
@@ -294,6 +299,11 @@ pub async fn switch_theme(
 
         let _ = std::fs::write(&config_path, final_content);
     }
+
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        crate::admin::build::spawn_build(&state_clone, "auto:switch_theme").await;
+    });
 
     Redirect::to("/admin/theme")
 }

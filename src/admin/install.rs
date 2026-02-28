@@ -70,7 +70,34 @@ pub async fn install_submit(
         admin_email: form.admin_email,
     };
 
-    if let Err(e) = settings.save(&state.db).await {
+    // 在事务中保存所有设置项，保证原子性
+    let save_result: Result<(), sqlx::Error> = async {
+        let mut tx = state.db.begin().await?;
+
+        let pairs = [
+            ("site_title", &settings.site_title),
+            ("site_subtitle", &settings.site_subtitle),
+            ("site_url", &settings.site_url),
+            ("admin_email", &settings.admin_email),
+        ];
+
+        for (key, value) in pairs {
+            sqlx::query(
+                "INSERT INTO site_settings (key, value) VALUES (?, ?) \
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            )
+            .bind(key)
+            .bind(value)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = save_result {
         tracing::error!("保存站点设置失败：{e}");
         return Redirect::to("/install?error=save_failed").into_response();
     }
@@ -221,6 +248,14 @@ button[type=submit]:hover{background:#5851db}
         </form>
     </div>
 </div>
+<script>
+(function(){
+    var match=document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    if(match){document.querySelectorAll('form[method="post"]').forEach(function(f){
+        var i=document.createElement('input');i.type='hidden';i.name='_csrf_token';i.value=match[1];f.appendChild(i);
+    });}
+})();
+</script>
 </body>
 </html>"#;
 
@@ -284,5 +319,13 @@ button[type=submit]:hover{background:#5851db}
         </form>
     </div>
 </div>
+<script>
+(function(){
+    var match=document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    if(match){document.querySelectorAll('form[method="post"]').forEach(function(f){
+        var i=document.createElement('input');i.type='hidden';i.name='_csrf_token';i.value=match[1];f.appendChild(i);
+    });}
+})();
+</script>
 </body>
 </html>"#;

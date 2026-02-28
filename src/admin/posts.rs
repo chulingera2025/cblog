@@ -4,7 +4,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Json;
 use minijinja::context;
 use serde::Deserialize;
-use sqlx::Row;
+use sqlx::{QueryBuilder, Row, Sqlite};
 
 use crate::admin::layout;
 use crate::admin::template::render_admin;
@@ -203,6 +203,14 @@ pub async fn create_post(
     })
     .to_string();
 
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!("开启事务失败：{e}");
+            return Redirect::to("/admin/posts");
+        }
+    };
+
     let _ = sqlx::query(
         "INSERT INTO posts (id, slug, title, content, status, created_at, updated_at, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
@@ -214,16 +222,21 @@ pub async fn create_post(
     .bind(&now)
     .bind(&now)
     .bind(&meta)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await;
 
     sync_post_taxonomy(
-        &state.db,
+        &mut tx,
         &id,
         form.tags.as_deref().unwrap_or(""),
         form.category.as_deref().unwrap_or(""),
     )
     .await;
+
+    if let Err(e) = tx.commit().await {
+        tracing::error!("提交事务失败：{e}");
+        return Redirect::to("/admin/posts");
+    }
 
     if status == "published" {
         let state_clone = state.clone();
@@ -313,6 +326,14 @@ pub async fn update_post(
     })
     .to_string();
 
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!("开启事务失败：{e}");
+            return Redirect::to(&format!("/admin/posts/{id}"));
+        }
+    };
+
     let _ = sqlx::query(
         "UPDATE posts SET title = ?, slug = ?, content = ?, status = ?, meta = ?, updated_at = ? WHERE id = ?",
     )
@@ -323,16 +344,21 @@ pub async fn update_post(
     .bind(&meta)
     .bind(&now)
     .bind(&id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await;
 
     sync_post_taxonomy(
-        &state.db,
+        &mut tx,
         &id,
         form.tags.as_deref().unwrap_or(""),
         form.category.as_deref().unwrap_or(""),
     )
     .await;
+
+    if let Err(e) = tx.commit().await {
+        tracing::error!("提交事务失败：{e}");
+        return Redirect::to(&format!("/admin/posts/{id}"));
+    }
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -429,6 +455,17 @@ pub async fn autosave_create(
     })
     .to_string();
 
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response();
+        }
+    };
+
     let result = sqlx::query(
         "INSERT INTO posts (id, slug, title, content, status, created_at, updated_at, meta) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)",
     )
@@ -439,18 +476,25 @@ pub async fn autosave_create(
     .bind(&now)
     .bind(&now)
     .bind(&meta)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await;
 
     match result {
         Ok(_) => {
             sync_post_taxonomy(
-                &state.db,
+                &mut tx,
                 &id,
                 body.tags.as_deref().unwrap_or(""),
                 body.category.as_deref().unwrap_or(""),
             )
             .await;
+            if let Err(e) = tx.commit().await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": e.to_string() })),
+                )
+                    .into_response();
+            }
             Json(serde_json::json!({ "id": id })).into_response()
         }
         Err(e) => (
@@ -480,6 +524,17 @@ pub async fn autosave_update(
     })
     .to_string();
 
+    let mut tx = match state.db.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response();
+        }
+    };
+
     let result = sqlx::query(
         "UPDATE posts SET title = ?, slug = ?, content = ?, meta = ?, updated_at = ? WHERE id = ?",
     )
@@ -489,18 +544,25 @@ pub async fn autosave_update(
     .bind(&meta)
     .bind(&now)
     .bind(&id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await;
 
     match result {
         Ok(_) => {
             sync_post_taxonomy(
-                &state.db,
+                &mut tx,
                 &id,
                 body.tags.as_deref().unwrap_or(""),
                 body.category.as_deref().unwrap_or(""),
             )
             .await;
+            if let Err(e) = tx.commit().await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": e.to_string() })),
+                )
+                    .into_response();
+            }
             Json(serde_json::json!({ "ok": true })).into_response()
         }
         Err(e) => (
@@ -514,97 +576,111 @@ pub async fn autosave_update(
 /// 同步文章的分类和标签关联表
 /// 根据表单提交的 tags（逗号分隔）和 category 字符串，
 /// 清空旧关联并重建，对不存在的标签/分类自动创建
+/// 使用批量 SQL 替代逐条 N+1 查询
 async fn sync_post_taxonomy(
-    db: &sqlx::SqlitePool,
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
     post_id: &str,
     tags_str: &str,
     category_str: &str,
 ) {
-    // 同步标签
+    let tags: Vec<&str> = tags_str
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // ── 同步标签 ──
     let _ = sqlx::query("DELETE FROM post_tags WHERE post_id = ?")
         .bind(post_id)
-        .execute(db)
+        .execute(&mut **tx)
         .await;
 
-    let tags: Vec<&str> = tags_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
-    for tag_name in tags {
-        let slug = generate_slug(tag_name);
-        if let Some(tag_id) = get_or_create_tag(db, tag_name, &slug).await {
-            let _ = sqlx::query("INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)")
-                .bind(post_id)
-                .bind(&tag_id)
-                .execute(db)
-                .await;
+    if !tags.is_empty() {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        // 批量 INSERT OR IGNORE 确保所有标签存在
+        let tag_data: Vec<(String, String, String)> = tags
+            .iter()
+            .map(|name| {
+                let id = ulid::Ulid::new().to_string();
+                let slug = generate_slug(name);
+                (id, name.to_string(), slug)
+            })
+            .collect();
+
+        let mut qb: QueryBuilder<Sqlite> =
+            QueryBuilder::new("INSERT OR IGNORE INTO tags (id, name, slug, description, created_at) ");
+        qb.push_values(&tag_data, |mut b, (id, name, slug)| {
+            b.push_bind(id)
+                .push_bind(name)
+                .push_bind(slug)
+                .push_bind("")
+                .push_bind(&now);
+        });
+        let _ = qb.build().execute(&mut **tx).await;
+
+        // 批量查询标签 ID
+        let mut qb: QueryBuilder<Sqlite> =
+            QueryBuilder::new("SELECT id, name FROM tags WHERE name IN (");
+        let mut separated = qb.separated(", ");
+        for tag_name in &tags {
+            separated.push_bind(*tag_name);
+        }
+        separated.push_unseparated(")");
+        let tag_rows = qb.build().fetch_all(&mut **tx).await.unwrap_or_default();
+
+        // 批量插入关联
+        if !tag_rows.is_empty() {
+            let mut qb: QueryBuilder<Sqlite> =
+                QueryBuilder::new("INSERT OR IGNORE INTO post_tags (post_id, tag_id) ");
+            qb.push_values(&tag_rows, |mut b, row| {
+                let tag_id: &str = row.get("id");
+                b.push_bind(post_id).push_bind(tag_id);
+            });
+            let _ = qb.build().execute(&mut **tx).await;
         }
     }
 
-    // 同步分类
+    // ── 同步分类 ──
     let _ = sqlx::query("DELETE FROM post_categories WHERE post_id = ?")
         .bind(post_id)
-        .execute(db)
+        .execute(&mut **tx)
         .await;
 
     let category = category_str.trim();
     if !category.is_empty() {
         let slug = generate_slug(category);
-        if let Some(cat_id) = get_or_create_category(db, category, &slug).await {
+        let now = chrono::Utc::now().to_rfc3339();
+        let cat_id = ulid::Ulid::new().to_string();
+
+        // 确保分类存在
+        let _ = sqlx::query(
+            "INSERT OR IGNORE INTO categories (id, name, slug, description, created_at) VALUES (?, ?, ?, '', ?)",
+        )
+        .bind(&cat_id)
+        .bind(category)
+        .bind(&slug)
+        .bind(&now)
+        .execute(&mut **tx)
+        .await;
+
+        // 查询实际分类 ID（可能已存在）
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT id FROM categories WHERE name = ?")
+                .bind(category)
+                .fetch_optional(&mut **tx)
+                .await
+                .ok()
+                .flatten();
+
+        if let Some((cid,)) = row {
             let _ = sqlx::query(
                 "INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)",
             )
             .bind(post_id)
-            .bind(&cat_id)
-            .execute(db)
+            .bind(&cid)
+            .execute(&mut **tx)
             .await;
         }
     }
-}
-
-async fn get_or_create_tag(db: &sqlx::SqlitePool, name: &str, slug: &str) -> Option<String> {
-    let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM tags WHERE name = ?")
-            .bind(name)
-            .fetch_optional(db)
-            .await
-            .ok()?;
-
-    if let Some((id,)) = existing {
-        return Some(id);
-    }
-
-    let id = ulid::Ulid::new().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query("INSERT INTO tags (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
-        .bind(&id)
-        .bind(name)
-        .bind(slug)
-        .bind(&now)
-        .execute(db)
-        .await
-        .ok()?;
-    Some(id)
-}
-
-async fn get_or_create_category(db: &sqlx::SqlitePool, name: &str, slug: &str) -> Option<String> {
-    let existing: Option<(String,)> =
-        sqlx::query_as("SELECT id FROM categories WHERE name = ?")
-            .bind(name)
-            .fetch_optional(db)
-            .await
-            .ok()?;
-
-    if let Some((id,)) = existing {
-        return Some(id);
-    }
-
-    let id = ulid::Ulid::new().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query("INSERT INTO categories (id, name, slug, created_at) VALUES (?, ?, ?, ?)")
-        .bind(&id)
-        .bind(name)
-        .bind(slug)
-        .bind(&now)
-        .execute(db)
-        .await
-        .ok()?;
-    Some(id)
 }

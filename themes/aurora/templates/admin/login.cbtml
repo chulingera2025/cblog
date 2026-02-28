@@ -33,3 +33,16 @@ html [lang="zh-CN"]
             label [for="password"] 密码
             input [type="password"] [id="password"] [name="password"] [required]
           button [type="submit"] 登录
+    script
+      (function() {
+          var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+          if (match) {
+              document.querySelectorAll('form[method="post"]').forEach(function(form) {
+                  var input = document.createElement('input');
+                  input.type = 'hidden';
+                  input.name = '_csrf_token';
+                  input.value = match[1];
+                  form.appendChild(input);
+              });
+          }
+      })();

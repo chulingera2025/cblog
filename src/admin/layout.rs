@@ -51,6 +51,7 @@ pub fn admin_page(title: &str, active_path: &str, body: &str, ctx: &PageContext)
 <div id="toast-container" class="toast-container"></div>
 <script>{TOAST_SCRIPT}</script>
 <script>{CONFIRM_SCRIPT}</script>
+<script>{CSRF_SCRIPT}</script>
 </body>
 </html>"#,
         title = html_escape(title),
@@ -60,6 +61,7 @@ pub fn admin_page(title: &str, active_path: &str, body: &str, ctx: &PageContext)
         body = body,
         TOAST_SCRIPT = TOAST_SCRIPT,
         CONFIRM_SCRIPT = CONFIRM_SCRIPT,
+        CSRF_SCRIPT = CSRF_SCRIPT,
     )
 }
 
@@ -1296,4 +1298,42 @@ function confirmAction(title, message, formEl) {
     };
     backdrop.onclick = function(e) { if (e.target === backdrop) backdrop.remove(); };
 }
+"#;
+
+// ── CSRF Token JS ──
+
+const CSRF_SCRIPT: &str = r#"
+(function() {
+    function getCsrfToken() {
+        var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+        return match ? match[1] : '';
+    }
+    document.querySelectorAll('form[method="POST"], form[method="post"]').forEach(function(form) {
+        if (form.querySelector('input[name="_csrf_token"]')) return;
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_csrf_token';
+        input.value = getCsrfToken();
+        form.appendChild(input);
+    });
+    var origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+        opts = opts || {};
+        var method = (opts.method || 'GET').toUpperCase();
+        if (method !== 'GET' && method !== 'HEAD') {
+            opts.headers = opts.headers || {};
+            if (opts.headers instanceof Headers) {
+                if (!opts.headers.has('X-CSRF-Token')) {
+                    opts.headers.set('X-CSRF-Token', getCsrfToken());
+                }
+            } else {
+                if (!opts.headers['X-CSRF-Token']) {
+                    opts.headers['X-CSRF-Token'] = getCsrfToken();
+                }
+            }
+        }
+        return origFetch.call(this, url, opts);
+    };
+    window.getCsrfToken = getCsrfToken;
+})();
 "#;

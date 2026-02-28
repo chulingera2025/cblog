@@ -59,7 +59,7 @@ pub async fn list_pages(
         None => {
             sqlx::query(
                 "SELECT id, title, slug, status, template, updated_at FROM pages \
-                 ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+                 WHERE status != 'archived' ORDER BY updated_at DESC LIMIT ? OFFSET ?",
             )
             .bind(per_page)
             .bind(offset)
@@ -81,10 +81,10 @@ pub async fn list_pages(
             let template: Option<&str> = row.get("template");
             let updated_at: &str = row.get("updated_at");
 
-            let (badge_class, status_label) = if status == "published" {
-                ("badge-success", "已发布")
-            } else {
-                ("badge-warning", "草稿")
+            let (badge_class, status_label) = match status {
+                "published" => ("badge-success", "已发布"),
+                "archived" => ("badge-neutral", "已归档"),
+                _ => ("badge-warning", "草稿"),
             };
 
             context! {
@@ -267,7 +267,9 @@ pub async fn delete_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let _ = sqlx::query("DELETE FROM pages WHERE id = ?")
+    let now = chrono::Utc::now().to_rfc3339();
+    let _ = sqlx::query("UPDATE pages SET status = 'archived', updated_at = ? WHERE id = ?")
+        .bind(&now)
         .bind(&id)
         .execute(&state.db)
         .await;

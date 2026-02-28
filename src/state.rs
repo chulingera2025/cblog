@@ -34,6 +34,8 @@ pub struct AppState {
     pub admin_env: Arc<Environment<'static>>,
     /// 实际使用的 JWT 密钥（优先配置文件，其次数据库持久化自动生成）
     pub jwt_secret: Arc<String>,
+    /// 站点是否通过 HTTPS 提供服务（根据 site_url 判断）
+    pub is_https: bool,
 }
 
 impl AppState {
@@ -85,6 +87,8 @@ impl AppState {
             &config.site.url,
         )?;
 
+        let is_https = config.site.url.starts_with("https://");
+
         Ok(Self {
             db: pool,
             config: Arc::new(config),
@@ -98,6 +102,7 @@ impl AppState {
             installed: Arc::new(AtomicBool::new(installed)),
             admin_env: Arc::new(admin_env),
             jwt_secret: Arc::new(jwt_secret),
+            is_https,
         })
     }
 }

@@ -349,10 +349,11 @@ function openMediaPicker(editorRef, target) {
         }
     }
 
-    // 加载媒体库列表
-    fetch('/admin/api/media')
+    // 加载媒体库列表（分页 API，per_page=200 以获取足够多的图片供选择）
+    fetch('/admin/api/media?per_page=100')
         .then(r => r.json())
-        .then(items => {
+        .then(data => {
+            const items = data.items || data;
             const grid = document.getElementById('media-picker-grid');
             if (!items || items.length === 0) {
                 grid.innerHTML = '<p style="text-align:center;color:var(--c-text-secondary);">暂无媒体文件</p>';

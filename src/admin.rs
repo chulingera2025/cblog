@@ -17,6 +17,7 @@ pub mod auth;
 pub mod build;
 pub mod categories;
 pub mod cleanup;
+pub mod csrf;
 pub mod dashboard;
 pub mod health;
 pub mod install;
@@ -131,6 +132,8 @@ pub fn router(state: AppState) -> Router {
         .merge(admin_static_routes)
         .nest_service("/media", media_service)
         .fallback_service(static_site)
+        // CSRF 保护中间件（在安装检测之前，确保所有表单都受保护）
+        .layer(middleware::from_fn(csrf::csrf_middleware))
         // 安装检测中间件应用于所有路由
         .layer(middleware::from_fn_with_state(
             state.clone(),

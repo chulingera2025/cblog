@@ -57,4 +57,43 @@ html [lang="zh-CN"]
           };
           backdrop.onclick = function(e) { if (e.target === backdrop) backdrop.remove(); };
       }
+    script
+      (function() {
+          function getCsrfToken() {
+              var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+              return match ? match[1] : '';
+          }
+          function injectCsrfFields() {
+              var token = getCsrfToken();
+              if (!token) return;
+              document.querySelectorAll('form[method="POST"], form[method="post"]').forEach(function(form) {
+                  if (form.querySelector('input[name="_csrf_token"]')) return;
+                  var input = document.createElement('input');
+                  input.type = 'hidden';
+                  input.name = '_csrf_token';
+                  input.value = token;
+                  form.appendChild(input);
+              });
+          }
+          document.addEventListener('DOMContentLoaded', injectCsrfFields);
+          var origFetch = window.fetch;
+          window.fetch = function(url, opts) {
+              opts = opts || {};
+              var method = (opts.method || 'GET').toUpperCase();
+              if (method !== 'GET' && method !== 'HEAD') {
+                  opts.headers = opts.headers || {};
+                  if (opts.headers instanceof Headers) {
+                      if (!opts.headers.has('X-CSRF-Token')) {
+                          opts.headers.set('X-CSRF-Token', getCsrfToken());
+                      }
+                  } else {
+                      if (!opts.headers['X-CSRF-Token']) {
+                          opts.headers['X-CSRF-Token'] = getCsrfToken();
+                      }
+                  }
+              }
+              return origFetch.call(this, url, opts);
+          };
+          window.getCsrfToken = getCsrfToken;
+      })();
     slot extra_scripts

@@ -458,7 +458,7 @@ pub async fn api_media_list(
     let total_pages = if total == 0 {
         1
     } else {
-        ((total as u32) + per_page - 1) / per_page
+        (total as u32).div_ceil(per_page)
     };
 
     Json(PaginatedMedia {

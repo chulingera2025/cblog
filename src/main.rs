@@ -29,6 +29,10 @@ enum Commands {
         #[arg(long)]
         clean: bool,
 
+        /// 强制全量重建（不清除缓存）
+        #[arg(long)]
+        force: bool,
+
         /// 项目根目录（默认当前目录）
         #[arg(short, long, default_value = ".")]
         root: PathBuf,
@@ -88,7 +92,7 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match command {
-        Commands::Build { clean, root } => {
+        Commands::Build { clean, force, root } => {
             let root = root.canonicalize()?;
             if init::ensure_initialized(&root)? {
                 tracing::info!("已自动初始化项目");
@@ -104,7 +108,14 @@ fn main() -> anyhow::Result<()> {
             );
             let db_posts = build::stages::load::fetch_db_posts_sync(&root.join("cblog.db"));
             let site_settings = admin::settings::SiteSettings::load_sync(&root.join("cblog.db"));
-            let _stats = build::run(&root, &site_config, clean, plugin_configs, theme_saved_config, db_posts, site_settings)?;
+            let _stats = build::run(&root, &site_config, build::BuildParams {
+                clean,
+                force,
+                plugin_configs,
+                theme_saved_config,
+                db_posts,
+                site_settings,
+            })?;
         }
         Commands::Serve { root, host, port } => {
             let root = root.canonicalize()?;

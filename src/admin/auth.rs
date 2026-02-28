@@ -1,4 +1,3 @@
-use crate::config::AuthConfig;
 use crate::state::AppState;
 use anyhow::{Context, Result};
 use argon2::password_hash::rand_core::OsRng;
@@ -77,8 +76,8 @@ fn parse_duration(s: &str) -> Result<Duration> {
 }
 
 /// 返回 (token, jti)
-fn create_jwt(user_id: &str, username: &str, config: &AuthConfig) -> Result<(String, String)> {
-    let duration = parse_duration(&config.jwt_expires_in)?;
+fn create_jwt(user_id: &str, username: &str, jwt_secret: &str, expires_in: &str) -> Result<(String, String)> {
+    let duration = parse_duration(expires_in)?;
     let exp = chrono::Utc::now().timestamp() as usize + duration.as_secs() as usize;
     let jti = ulid::Ulid::new().to_string();
 
@@ -92,17 +91,17 @@ fn create_jwt(user_id: &str, username: &str, config: &AuthConfig) -> Result<(Str
     let token = jsonwebtoken::encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(config.jwt_secret.as_bytes()),
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
     .context("JWT 编码失败")?;
 
     Ok((token, jti))
 }
 
-fn decode_jwt(token: &str, config: &AuthConfig) -> Result<Claims> {
+fn decode_jwt(token: &str, jwt_secret: &str) -> Result<Claims> {
     let data = jsonwebtoken::decode::<Claims>(
         token,
-        &DecodingKey::from_secret(config.jwt_secret.as_bytes()),
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
         &Validation::default(),
     )
     .context("JWT 解码失败")?;
@@ -207,14 +206,14 @@ async fn try_login(state: &AppState, form: &LoginForm) -> Result<(String, String
         .execute(&state.db)
         .await;
 
-    create_jwt(&user_id, &form.username, &state.config.auth)
+    create_jwt(&user_id, &form.username, &state.jwt_secret, &state.config.auth.jwt_expires_in)
 }
 
 pub async fn logout(State(state): State<AppState>, req: Request<axum::body::Body>) -> Response {
     let cookie_name = &state.config.auth.session_name;
 
     if let Some(token) = extract_token_from_request(&req, cookie_name)
-        && let Ok(claims) = decode_jwt(&token, &state.config.auth) {
+        && let Ok(claims) = decode_jwt(&token, &state.jwt_secret) {
             let _ = sqlx::query("INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)")
                 .bind(&claims.jti)
                 .bind(chrono::DateTime::from_timestamp(claims.exp as i64, 0)
@@ -246,7 +245,7 @@ pub async fn require_auth(
         None => return redirect_to_login(),
     };
 
-    let claims = match decode_jwt(&token, config) {
+    let claims = match decode_jwt(&token, &state.jwt_secret) {
         Ok(c) => c,
         Err(_) => return redirect_to_login(),
     };
@@ -278,7 +277,7 @@ pub async fn require_auth(
         let threshold = total_duration.as_secs() as usize / 3;
 
         if remaining < threshold
-            && let Ok((new_token, _)) = create_jwt(&claims.sub, &claims.username, config) {
+            && let Ok((new_token, _)) = create_jwt(&claims.sub, &claims.username, &state.jwt_secret, &config.jwt_expires_in) {
                 let cookie = build_cookie(
                     cookie_name,
                     &new_token,

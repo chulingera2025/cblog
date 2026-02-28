@@ -1,0 +1,11 @@
+extends base
+
+slot content
+  if error_message
+    div.alert.alert-error {{ error_message }}
+  else if empty_message
+    div.empty-state
+      p {{ empty_message }}
+  else
+    raw plugin_content
+  end

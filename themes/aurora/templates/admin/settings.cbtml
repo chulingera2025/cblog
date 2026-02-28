@@ -1,0 +1,21 @@
+extends base
+
+slot content
+  include partials/page-header
+  div.card
+    div.card-body
+      form [method="POST"] [action="/admin/settings"]
+        div.form-group
+          label.form-label 站点标题
+          input.form-input [type="text"] [name="site_title"] [value="{{ site_title_value }}"] [required]
+        div.form-group
+          label.form-label 副标题
+          input.form-input [type="text"] [name="site_subtitle"] [value="{{ site_subtitle }}"]
+        div.form-group
+          label.form-label 站点 URL
+          input.form-input [type="url"] [name="site_url"] [value="{{ site_url_value }}"] [required]
+          div.form-hint 站点的完整访问地址，用于生成绝对链接
+        div.form-group
+          label.form-label 管理员邮箱
+          input.form-input [type="email"] [name="admin_email"] [value="{{ admin_email }}"]
+        button.btn.btn-primary [type="submit"] 保存设置

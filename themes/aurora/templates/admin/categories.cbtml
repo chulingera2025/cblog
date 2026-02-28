@@ -1,0 +1,92 @@
+extends base
+
+slot content
+  if mode == "list"
+    div.page-header
+      h1.page-title 分类管理
+      a.btn.btn-primary [href="/admin/categories/new"]
+        raw svg_icon("plus")
+        span  新建分类
+    div.table-wrapper
+      table
+        thead
+          tr
+            th 名称
+            th Slug
+            th 描述
+            th 父分类
+            th 文章数
+            th 创建时间
+            th 操作
+        tbody
+          for cat in categories
+            tr
+              td
+                a [href="/admin/categories/{{ cat.id }}"] {{ cat.name }}
+              td {{ cat.slug }}
+              td {{ cat.description }}
+              td {{ cat.parent_name }}
+              td {{ cat.post_count }}
+              td {{ cat.created_at }}
+              td.actions
+                a.btn.btn-secondary.btn-sm [href="/admin/categories/{{ cat.id }}"] 编辑
+                form [method="POST"] [action="/admin/categories/{{ cat.id }}/delete"] [style="display:inline;"] [onsubmit="confirmAction('删除分类', '确定要删除该分类吗？删除后文章关联将被移除。', this); return false;"]
+                  button.btn.btn-danger.btn-sm [type="submit"] 删除
+          end
+    include partials/pagination
+  else if mode == "new"
+    include partials/page-header
+    div.card
+      div.card-body
+        form [method="POST"] [action="/admin/categories"]
+          div.form-group
+            label.form-label 名称
+            input.form-input [type="text"] [name="name"] [required]
+          div.form-group
+            label.form-label Slug（留空自动生成）
+            input.form-input [type="text"] [name="slug"]
+          div.form-group
+            label.form-label 描述
+            textarea.form-textarea [name="description"] [rows="3"]
+          div.form-group
+            label.form-label 父分类
+            select.form-select [name="parent_id"]
+              option [value=""] 无
+              for opt in parent_options
+                option [value="{{ opt.id }}"] {{ opt.name }}
+              end
+          div.form-group
+            button.btn.btn-primary [type="submit"] 创建分类
+            a.btn.btn-secondary [href="/admin/categories"] 取消
+  else if mode == "edit"
+    include partials/page-header
+    div.card
+      div.card-body
+        form [method="POST"] [action="/admin/categories/{{ category.id }}"]
+          div.form-group
+            label.form-label 名称
+            input.form-input [type="text"] [name="name"] [value="{{ category.name }}"] [required]
+          div.form-group
+            label.form-label Slug
+            input.form-input [type="text"] [name="slug"] [value="{{ category.slug }}"]
+          div.form-group
+            label.form-label 描述
+            textarea.form-textarea [name="description"] [rows="3"] {{ category.description }}
+          div.form-group
+            label.form-label 父分类
+            select.form-select [name="parent_id"]
+              option [value=""] 无
+              for opt in parent_options
+                if opt.selected
+                  option [value="{{ opt.id }}"] [selected] {{ opt.name }}
+                else
+                  option [value="{{ opt.id }}"] {{ opt.name }}
+                end
+              end
+          div.form-group
+            button.btn.btn-primary [type="submit"] 保存修改
+            a.btn.btn-secondary [href="/admin/categories"] 取消
+  else if mode == "not_found"
+    div.empty-state
+      p 该分类不存在
+  end

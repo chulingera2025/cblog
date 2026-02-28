@@ -12,7 +12,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-// ── 数据结构 ──
+// -- 数据结构 --
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -41,7 +41,7 @@ struct Claims {
     jti: String,
 }
 
-// ── 密码工具 ──
+// -- 密码工具 --
 
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
@@ -59,7 +59,7 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
         .is_ok())
 }
 
-// ── JWT 工具 ──
+// -- JWT 工具 --
 
 fn parse_duration(s: &str) -> Result<Duration> {
     let s = s.trim();
@@ -115,7 +115,7 @@ fn build_cookie(name: &str, value: &str, max_age_secs: i64, secure: bool) -> Str
     )
 }
 
-// ── 路由处理 ──
+// -- 路由处理 --
 
 pub async fn login_page(
     State(state): State<AppState>,
@@ -135,7 +135,6 @@ pub async fn login_submit(
     headers: axum::http::HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Response {
-    // 提取客户端 IP：优先 x-forwarded-for，回退到 x-real-ip
     let client_ip = headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok())
@@ -185,28 +184,18 @@ pub async fn login_submit(
 }
 
 async fn try_login(state: &AppState, form: &LoginForm) -> Result<(String, String)> {
-    let row = sqlx::query_as::<_, (String, String)>(
-        "SELECT id, password_hash FROM users WHERE username = ?",
-    )
-    .bind(&form.username)
-    .fetch_optional(&state.db)
-    .await
-    .context("查询用户失败")?
-    .context("用户不存在")?;
-
-    let (user_id, password_hash) = row;
+    let (user_id, password_hash) = state
+        .auth
+        .find_user_by_username(&form.username)
+        .await
+        .context("查询用户失败")?
+        .context("用户不存在")?;
 
     if !verify_password(&form.password, &password_hash)? {
         anyhow::bail!("密码错误");
     }
 
-    // 更新最后登录时间
-    let now = chrono::Utc::now().to_rfc3339();
-    let _ = sqlx::query("UPDATE users SET last_login_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&user_id)
-        .execute(&state.db)
-        .await;
+    let _ = state.auth.update_last_login(&user_id).await;
 
     create_jwt(&user_id, &form.username, &state.jwt_secret, &state.config.auth.jwt_expires_in)
 }
@@ -216,13 +205,10 @@ pub async fn logout(State(state): State<AppState>, req: Request<axum::body::Body
 
     if let Some(token) = extract_token_from_request(&req, cookie_name)
         && let Ok(claims) = decode_jwt(&token, &state.jwt_secret) {
-            let _ = sqlx::query("INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)")
-                .bind(&claims.jti)
-                .bind(chrono::DateTime::from_timestamp(claims.exp as i64, 0)
-                    .unwrap_or_default()
-                    .to_rfc3339())
-                .execute(&state.db)
-                .await;
+            let expires_at = chrono::DateTime::from_timestamp(claims.exp as i64, 0)
+                .unwrap_or_default()
+                .to_rfc3339();
+            let _ = state.auth.revoke_token(&claims.jti, &expires_at).await;
         }
 
     let clear_cookie = build_cookie(cookie_name, "", 0, state.is_https);
@@ -232,7 +218,7 @@ pub async fn logout(State(state): State<AppState>, req: Request<axum::body::Body
     resp
 }
 
-// ── 认证中间件 ──
+// -- 认证中间件 --
 
 pub async fn require_auth(
     State(state): State<AppState>,
@@ -253,15 +239,7 @@ pub async fn require_auth(
     };
 
     // 检查是否已被撤销
-    let revoked: bool = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM revoked_tokens WHERE jti = ?)",
-    )
-    .bind(&claims.jti)
-    .fetch_one(&state.db)
-    .await
-    .unwrap_or(true);
-
-    if revoked {
+    if state.auth.is_token_revoked(&claims.jti).await {
         return redirect_to_login();
     }
 
@@ -295,22 +273,15 @@ pub async fn require_auth(
     resp
 }
 
-// ── 修改密码 ──
+// -- 修改密码 --
 
 pub async fn change_password(
     State(state): State<AppState>,
     axum::Extension(user): axum::Extension<AuthUser>,
     Form(form): Form<ChangePasswordForm>,
 ) -> impl IntoResponse {
-    let row = sqlx::query_as::<_, (String,)>(
-        "SELECT password_hash FROM users WHERE id = ?",
-    )
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await;
-
-    let password_hash = match row {
-        Ok(Some((hash,))) => hash,
+    let password_hash = match state.auth.get_password_hash(&user.id).await {
+        Ok(Some(hash)) => hash,
         _ => return (StatusCode::INTERNAL_SERVER_ERROR, "用户查询失败").into_response(),
     };
 
@@ -325,18 +296,13 @@ pub async fn change_password(
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "密码哈希失败").into_response(),
     };
 
-    match sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
-        .bind(&new_hash)
-        .bind(&user.id)
-        .execute(&state.db)
-        .await
-    {
-        Ok(_) => Redirect::to("/admin/profile?toast_msg=密码已更新&toast_type=success").into_response(),
+    match state.auth.update_password(&user.id, &new_hash).await {
+        Ok(()) => Redirect::to("/admin/profile?toast_msg=密码已更新&toast_type=success").into_response(),
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "更新密码失败").into_response(),
     }
 }
 
-// ── 辅助函数 ──
+// -- 辅助函数 --
 
 fn extract_token_from_request<B>(req: &Request<B>, cookie_name: &str) -> Option<String> {
     let header = req.headers().get(axum::http::header::COOKIE)?;

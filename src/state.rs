@@ -2,6 +2,10 @@ use crate::admin::layout::PluginSidebarEntry;
 use crate::admin::settings::SiteSettings;
 use crate::build::events::BuildEvent;
 use crate::config::SiteConfig;
+use crate::repository::{
+    AuthRepository, BuildRepository, CategoryRepository, MediaRepository, PageRepository,
+    PostRepository, SettingsRepository, TagRepository,
+};
 use anyhow::Result;
 use minijinja::Environment;
 use sqlx::SqlitePool;
@@ -36,6 +40,15 @@ pub struct AppState {
     pub jwt_secret: Arc<String>,
     /// 站点是否通过 HTTPS 提供服务（根据 site_url 判断）
     pub is_https: bool,
+    // -- Repository 层 --
+    pub posts: PostRepository,
+    pub pages: PageRepository,
+    pub categories: CategoryRepository,
+    pub tags: TagRepository,
+    pub media: MediaRepository,
+    pub settings_repo: SettingsRepository,
+    pub builds: BuildRepository,
+    pub auth: AuthRepository,
 }
 
 impl AppState {
@@ -74,11 +87,8 @@ impl AppState {
         }
 
         // 检查安装状态：users 表是否有记录
-        let user_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-            .fetch_one(&pool)
-            .await
-            .unwrap_or((0,));
-        let installed = user_count.0 > 0;
+        let auth_repo = AuthRepository::new(pool.clone());
+        let installed = auth_repo.has_users().await;
 
         // 构建后台模板渲染环境（从当前激活主题加载后台模板）
         let admin_env = crate::admin::template::build_admin_env(
@@ -90,7 +100,7 @@ impl AppState {
         let is_https = config.site.url.starts_with("https://");
 
         Ok(Self {
-            db: pool,
+            db: pool.clone(),
             config: Arc::new(config),
             project_root,
             build_events,
@@ -103,6 +113,14 @@ impl AppState {
             admin_env: Arc::new(admin_env),
             jwt_secret: Arc::new(jwt_secret),
             is_https,
+            posts: PostRepository::new(pool.clone()),
+            pages: PageRepository::new(pool.clone()),
+            categories: CategoryRepository::new(pool.clone()),
+            tags: TagRepository::new(pool.clone()),
+            media: MediaRepository::new(pool.clone()),
+            settings_repo: SettingsRepository::new(pool.clone()),
+            builds: BuildRepository::new(pool.clone()),
+            auth: auth_repo,
         })
     }
 }

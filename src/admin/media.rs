@@ -6,25 +6,12 @@ use std::path;
 
 use crate::admin::template::{build_admin_context, render_admin};
 use crate::media::{process, upload};
+use crate::repository::media::MediaInsertParams;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub page: Option<u32>,
-}
-
-#[derive(Serialize, sqlx::FromRow)]
-struct MediaItem {
-    id: String,
-    filename: String,
-    original_name: String,
-    mime_type: String,
-    size_bytes: i64,
-    width: Option<i64>,
-    height: Option<i64>,
-    url: String,
-    thumb_url: Option<String>,
-    uploaded_at: String,
 }
 
 pub async fn list_media(
@@ -35,18 +22,7 @@ pub async fn list_media(
     let per_page: u32 = 24;
     let offset = (page - 1) * per_page;
 
-    let rows: Vec<MediaItem> = sqlx::query_as::<_, MediaItem>(
-        r#"SELECT id, filename, original_name, mime_type, size_bytes,
-                  width, height, url, thumb_url, uploaded_at
-           FROM media
-           ORDER BY uploaded_at DESC
-           LIMIT ? OFFSET ?"#,
-    )
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let rows = state.media.list(per_page, offset).await;
 
     let has_next = rows.len() as u32 == per_page;
     let has_prev = page > 1;
@@ -146,7 +122,6 @@ pub async fn upload_media(
             }
         };
 
-        // 如果转码为 WebP 则更新扩展名
         let final_name = if processed.mime_type == "image/webp" && !file_name.ends_with(".webp") {
             let stem = path::Path::new(&file_name)
                 .file_stem()
@@ -160,7 +135,6 @@ pub async fn upload_media(
         let (relative_path, url) = upload::generate_storage_path(&final_name);
         let upload_dir = &config.upload_dir;
 
-        // 写入 {project_root}/{upload_dir}/{relative_path}
         let media_path = state.project_root.join(upload_dir).join(&relative_path);
         if let Some(parent) = media_path.parent() {
             tokio::fs::create_dir_all(parent).await.ok();
@@ -169,14 +143,12 @@ pub async fn upload_media(
             return render_upload_error(&state, &format!("写入文件失败：{e}"));
         }
 
-        // 同时写入 public 目录以供静态访问
         let public_path = state.project_root.join("public/media").join(&relative_path);
         if let Some(parent) = public_path.parent() {
             tokio::fs::create_dir_all(parent).await.ok();
         }
         tokio::fs::write(&public_path, &processed.data).await.ok();
 
-        // 写入缩略图
         let thumb_url = if let Some(ref thumb_data) = processed.thumbnail {
             let thumb_relative = thumb_relative_path(&relative_path);
 
@@ -197,32 +169,20 @@ pub async fn upload_media(
             None
         };
 
-        // 插入数据库
         let id = ulid::Ulid::new().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
         let filename = path::Path::new(&relative_path)
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
 
-        sqlx::query(
-            "INSERT INTO media (id, filename, original_name, mime_type, size_bytes, width, height, url, thumb_url, uploaded_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(&filename)
-        .bind(&file_name)
-        .bind(&processed.mime_type)
-        .bind(processed.data.len() as i64)
-        .bind(processed.width as i64)
-        .bind(processed.height as i64)
-        .bind(&url)
-        .bind(&thumb_url)
-        .bind(&now)
-        .execute(&state.db)
-        .await
-        .ok();
+        state.media.insert(&MediaInsertParams {
+            id: &id, filename: &filename, original_name: &file_name,
+            mime_type: &processed.mime_type,
+            size_bytes: processed.data.len() as i64,
+            width: processed.width as i64, height: processed.height as i64,
+            url: &url, thumb_url: thumb_url.as_deref(),
+        }).await.ok();
 
         return Redirect::to("/admin/media").into_response();
     }
@@ -234,21 +194,8 @@ pub async fn delete_media(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let row = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT url, thumb_url FROM media WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
-    if let Some((url, thumb_url)) = row {
-        sqlx::query("DELETE FROM media WHERE id = ?")
-            .bind(&id)
-            .execute(&state.db)
-            .await
-            .ok();
+    if let Some((url, thumb_url)) = state.media.get_urls(&id).await {
+        state.media.delete(&id).await.ok();
 
         let upload_dir = &state.config.media.upload_dir;
         let relative = url.strip_prefix("/media/").unwrap_or(&url);
@@ -375,30 +322,19 @@ pub async fn api_upload_media(
         };
 
         let id = ulid::Ulid::new().to_string();
-        let now = chrono::Utc::now().to_rfc3339();
         let filename = path::Path::new(&relative_path)
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_string();
 
-        let _ = sqlx::query(
-            "INSERT INTO media (id, filename, original_name, mime_type, size_bytes, width, height, url, thumb_url, uploaded_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&id)
-        .bind(&filename)
-        .bind(&file_name)
-        .bind(&processed.mime_type)
-        .bind(processed.data.len() as i64)
-        .bind(processed.width as i64)
-        .bind(processed.height as i64)
-        .bind(&url)
-        .bind(&thumb_url)
-        .bind(&now)
-        .execute(&state.db)
-        .await
-        .ok();
+        let _ = state.media.insert(&MediaInsertParams {
+            id: &id, filename: &filename, original_name: &file_name,
+            mime_type: &processed.mime_type,
+            size_bytes: processed.data.len() as i64,
+            width: processed.width as i64, height: processed.height as i64,
+            url: &url, thumb_url: thumb_url.as_deref(),
+        }).await;
 
         return Json(serde_json::json!({
             "url": url,
@@ -423,7 +359,7 @@ pub struct ApiListQuery {
 
 #[derive(Serialize)]
 struct PaginatedMedia {
-    items: Vec<MediaItem>,
+    items: Vec<crate::repository::media::MediaItem>,
     total: i64,
     page: u32,
     per_page: u32,
@@ -439,21 +375,8 @@ pub async fn api_media_list(
     let per_page = params.per_page.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * per_page;
 
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media")
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
-
-    let items: Vec<MediaItem> = sqlx::query_as::<_, MediaItem>(
-        "SELECT id, filename, original_name, mime_type, size_bytes,
-                width, height, url, thumb_url, uploaded_at
-         FROM media ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
-    )
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let total = state.media.count().await;
+    let items = state.media.list(per_page, offset).await;
 
     let total_pages = if total == 0 {
         1

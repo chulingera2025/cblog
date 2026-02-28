@@ -100,7 +100,7 @@ pub async fn get_site_url(state: &AppState) -> String {
     }
 }
 
-// ── 设置页面 ──
+// -- 设置页面 --
 
 pub async fn settings_page(State(state): State<AppState>) -> Html<String> {
     let settings = state.site_settings.read().await;

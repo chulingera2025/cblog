@@ -4,10 +4,11 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Json;
 use minijinja::context;
 use serde::Deserialize;
-use sqlx::{QueryBuilder, Row, Sqlite};
+use sqlx::Row;
 
 use crate::admin::layout;
 use crate::admin::template::render_admin;
+use crate::repository::post::{PostAutosaveParams, PostWriteParams};
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -47,64 +48,11 @@ pub async fn list_posts(
 ) -> Html<String> {
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i32 = 20;
-    let offset = (page as i32 - 1) * per_page;
 
-    let rows = match (params.status.as_deref(), params.search.as_deref()) {
-        (Some(status), Some(search)) => {
-            let pattern = format!("%{search}%");
-            sqlx::query(
-                "SELECT id, title, status, created_at, updated_at FROM posts \
-                 WHERE status != 'archived' AND status = ? AND title LIKE ? \
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(status)
-            .bind(&pattern)
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default()
-        }
-        (Some(status), None) => {
-            sqlx::query(
-                "SELECT id, title, status, created_at, updated_at FROM posts \
-                 WHERE status != 'archived' AND status = ? \
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(status)
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default()
-        }
-        (None, Some(search)) => {
-            let pattern = format!("%{search}%");
-            sqlx::query(
-                "SELECT id, title, status, created_at, updated_at FROM posts \
-                 WHERE status != 'archived' AND title LIKE ? \
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(&pattern)
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default()
-        }
-        (None, None) => {
-            sqlx::query(
-                "SELECT id, title, status, created_at, updated_at FROM posts \
-                 WHERE status != 'archived' \
-                 ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default()
-        }
-    };
+    let rows = state
+        .posts
+        .list(page, per_page, params.status.as_deref(), params.search.as_deref())
+        .await;
 
     let has_next = rows.len() as i32 == per_page;
 
@@ -134,8 +82,6 @@ pub async fn list_posts(
         })
         .collect();
 
-    // 分页：简单的上一页/下一页，需要计算 total_pages 来兼容 pagination partial
-    // 由于原始实现没有 COUNT 查询，这里用 has_next 模拟总页数
     let total_pages = if has_next { page + 1 } else { page };
 
     let sidebar_groups = layout::sidebar_groups_value("/admin/posts");
@@ -193,7 +139,6 @@ pub async fn create_post(
         _ => generate_slug(&form.title),
     };
     let status = form.status.as_deref().unwrap_or("draft");
-    let now = chrono::Utc::now().to_rfc3339();
 
     let meta = serde_json::json!({
         "tags": form.tags.as_deref().unwrap_or(""),
@@ -203,38 +148,13 @@ pub async fn create_post(
     })
     .to_string();
 
-    let mut tx = match state.db.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            tracing::error!("开启事务失败：{e}");
-            return Redirect::to("/admin/posts");
-        }
-    };
-
-    let _ = sqlx::query(
-        "INSERT INTO posts (id, slug, title, content, status, created_at, updated_at, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&slug)
-    .bind(&form.title)
-    .bind(&form.content)
-    .bind(status)
-    .bind(&now)
-    .bind(&now)
-    .bind(&meta)
-    .execute(&mut *tx)
-    .await;
-
-    sync_post_taxonomy(
-        &mut tx,
-        &id,
-        form.tags.as_deref().unwrap_or(""),
-        form.category.as_deref().unwrap_or(""),
-    )
-    .await;
-
-    if let Err(e) = tx.commit().await {
-        tracing::error!("提交事务失败：{e}");
+    if let Err(e) = state.posts.create(&PostWriteParams {
+        id: &id, slug: &slug, title: &form.title, content: &form.content,
+        status, meta: &meta,
+        tags_str: form.tags.as_deref().unwrap_or(""),
+        category_str: form.category.as_deref().unwrap_or(""),
+    }).await {
+        tracing::error!("创建文章失败：{e}");
         return Redirect::to("/admin/posts");
     }
 
@@ -252,16 +172,7 @@ pub async fn edit_post_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
-    let row = sqlx::query(
-        "SELECT id, slug, title, content, status, meta FROM posts WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
-    let Some(post) = row else {
+    let Some(post) = state.posts.get_by_id(&id).await else {
         return Html("<h1>文章不存在</h1>".to_string());
     };
 
@@ -316,7 +227,6 @@ pub async fn update_post(
         _ => generate_slug(&form.title),
     };
     let status = form.status.as_deref().unwrap_or("draft");
-    let now = chrono::Utc::now().to_rfc3339();
 
     let meta = serde_json::json!({
         "tags": form.tags.as_deref().unwrap_or(""),
@@ -326,37 +236,13 @@ pub async fn update_post(
     })
     .to_string();
 
-    let mut tx = match state.db.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            tracing::error!("开启事务失败：{e}");
-            return Redirect::to(&format!("/admin/posts/{id}"));
-        }
-    };
-
-    let _ = sqlx::query(
-        "UPDATE posts SET title = ?, slug = ?, content = ?, status = ?, meta = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(&form.title)
-    .bind(&slug)
-    .bind(&form.content)
-    .bind(status)
-    .bind(&meta)
-    .bind(&now)
-    .bind(&id)
-    .execute(&mut *tx)
-    .await;
-
-    sync_post_taxonomy(
-        &mut tx,
-        &id,
-        form.tags.as_deref().unwrap_or(""),
-        form.category.as_deref().unwrap_or(""),
-    )
-    .await;
-
-    if let Err(e) = tx.commit().await {
-        tracing::error!("提交事务失败：{e}");
+    if let Err(e) = state.posts.update(&PostWriteParams {
+        id: &id, slug: &slug, title: &form.title, content: &form.content,
+        status, meta: &meta,
+        tags_str: form.tags.as_deref().unwrap_or(""),
+        category_str: form.category.as_deref().unwrap_or(""),
+    }).await {
+        tracing::error!("更新文章失败：{e}");
         return Redirect::to(&format!("/admin/posts/{id}"));
     }
 
@@ -372,12 +258,7 @@ pub async fn delete_post(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let now = chrono::Utc::now().to_rfc3339();
-    let _ = sqlx::query("UPDATE posts SET status = 'archived', updated_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&id)
-        .execute(&state.db)
-        .await;
+    let _ = state.posts.delete(&id).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -391,12 +272,7 @@ pub async fn publish_post(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let now = chrono::Utc::now().to_rfc3339();
-    let _ = sqlx::query("UPDATE posts SET status = 'published', updated_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&id)
-        .execute(&state.db)
-        .await;
+    let _ = state.posts.publish(&id).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -410,12 +286,7 @@ pub async fn unpublish_post(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let now = chrono::Utc::now().to_rfc3339();
-    let _ = sqlx::query("UPDATE posts SET status = 'draft', updated_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&id)
-        .execute(&state.db)
-        .await;
+    let _ = state.posts.unpublish(&id).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -445,7 +316,6 @@ pub async fn autosave_create(
         Some(s) if !s.trim().is_empty() => s.trim().to_string(),
         _ => generate_slug(&body.title),
     };
-    let now = chrono::Utc::now().to_rfc3339();
 
     let meta = serde_json::json!({
         "tags": body.tags.as_deref().unwrap_or(""),
@@ -455,48 +325,12 @@ pub async fn autosave_create(
     })
     .to_string();
 
-    let mut tx = match state.db.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response();
-        }
-    };
-
-    let result = sqlx::query(
-        "INSERT INTO posts (id, slug, title, content, status, created_at, updated_at, meta) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&slug)
-    .bind(&body.title)
-    .bind(&body.content)
-    .bind(&now)
-    .bind(&now)
-    .bind(&meta)
-    .execute(&mut *tx)
-    .await;
-
-    match result {
-        Ok(_) => {
-            sync_post_taxonomy(
-                &mut tx,
-                &id,
-                body.tags.as_deref().unwrap_or(""),
-                body.category.as_deref().unwrap_or(""),
-            )
-            .await;
-            if let Err(e) = tx.commit().await {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": e.to_string() })),
-                )
-                    .into_response();
-            }
-            Json(serde_json::json!({ "id": id })).into_response()
-        }
+    match state.posts.autosave_create(&PostAutosaveParams {
+        id: &id, slug: &slug, title: &body.title, content: &body.content, meta: &meta,
+        tags_str: body.tags.as_deref().unwrap_or(""),
+        category_str: body.category.as_deref().unwrap_or(""),
+    }).await {
+        Ok(()) => Json(serde_json::json!({ "id": id })).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
@@ -514,7 +348,6 @@ pub async fn autosave_update(
         Some(s) if !s.trim().is_empty() => s.trim().to_string(),
         _ => generate_slug(&body.title),
     };
-    let now = chrono::Utc::now().to_rfc3339();
 
     let meta = serde_json::json!({
         "tags": body.tags.as_deref().unwrap_or(""),
@@ -524,163 +357,16 @@ pub async fn autosave_update(
     })
     .to_string();
 
-    let mut tx = match state.db.begin().await {
-        Ok(tx) => tx,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response();
-        }
-    };
-
-    let result = sqlx::query(
-        "UPDATE posts SET title = ?, slug = ?, content = ?, meta = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(&body.title)
-    .bind(&slug)
-    .bind(&body.content)
-    .bind(&meta)
-    .bind(&now)
-    .bind(&id)
-    .execute(&mut *tx)
-    .await;
-
-    match result {
-        Ok(_) => {
-            sync_post_taxonomy(
-                &mut tx,
-                &id,
-                body.tags.as_deref().unwrap_or(""),
-                body.category.as_deref().unwrap_or(""),
-            )
-            .await;
-            if let Err(e) = tx.commit().await {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": e.to_string() })),
-                )
-                    .into_response();
-            }
-            Json(serde_json::json!({ "ok": true })).into_response()
-        }
+    match state.posts.autosave_update(&PostAutosaveParams {
+        id: &id, slug: &slug, title: &body.title, content: &body.content, meta: &meta,
+        tags_str: body.tags.as_deref().unwrap_or(""),
+        category_str: body.category.as_deref().unwrap_or(""),
+    }).await {
+        Ok(()) => Json(serde_json::json!({ "ok": true })).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
         )
             .into_response(),
-    }
-}
-
-/// 同步文章的分类和标签关联表
-/// 根据表单提交的 tags（逗号分隔）和 category 字符串，
-/// 清空旧关联并重建，对不存在的标签/分类自动创建
-/// 使用批量 SQL 替代逐条 N+1 查询
-async fn sync_post_taxonomy(
-    tx: &mut sqlx::Transaction<'_, Sqlite>,
-    post_id: &str,
-    tags_str: &str,
-    category_str: &str,
-) {
-    let tags: Vec<&str> = tags_str
-        .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    // ── 同步标签 ──
-    let _ = sqlx::query("DELETE FROM post_tags WHERE post_id = ?")
-        .bind(post_id)
-        .execute(&mut **tx)
-        .await;
-
-    if !tags.is_empty() {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        // 批量 INSERT OR IGNORE 确保所有标签存在
-        let tag_data: Vec<(String, String, String)> = tags
-            .iter()
-            .map(|name| {
-                let id = ulid::Ulid::new().to_string();
-                let slug = generate_slug(name);
-                (id, name.to_string(), slug)
-            })
-            .collect();
-
-        let mut qb: QueryBuilder<Sqlite> =
-            QueryBuilder::new("INSERT OR IGNORE INTO tags (id, name, slug, description, created_at) ");
-        qb.push_values(&tag_data, |mut b, (id, name, slug)| {
-            b.push_bind(id)
-                .push_bind(name)
-                .push_bind(slug)
-                .push_bind("")
-                .push_bind(&now);
-        });
-        let _ = qb.build().execute(&mut **tx).await;
-
-        // 批量查询标签 ID
-        let mut qb: QueryBuilder<Sqlite> =
-            QueryBuilder::new("SELECT id, name FROM tags WHERE name IN (");
-        let mut separated = qb.separated(", ");
-        for tag_name in &tags {
-            separated.push_bind(*tag_name);
-        }
-        separated.push_unseparated(")");
-        let tag_rows = qb.build().fetch_all(&mut **tx).await.unwrap_or_default();
-
-        // 批量插入关联
-        if !tag_rows.is_empty() {
-            let mut qb: QueryBuilder<Sqlite> =
-                QueryBuilder::new("INSERT OR IGNORE INTO post_tags (post_id, tag_id) ");
-            qb.push_values(&tag_rows, |mut b, row| {
-                let tag_id: &str = row.get("id");
-                b.push_bind(post_id).push_bind(tag_id);
-            });
-            let _ = qb.build().execute(&mut **tx).await;
-        }
-    }
-
-    // ── 同步分类 ──
-    let _ = sqlx::query("DELETE FROM post_categories WHERE post_id = ?")
-        .bind(post_id)
-        .execute(&mut **tx)
-        .await;
-
-    let category = category_str.trim();
-    if !category.is_empty() {
-        let slug = generate_slug(category);
-        let now = chrono::Utc::now().to_rfc3339();
-        let cat_id = ulid::Ulid::new().to_string();
-
-        // 确保分类存在
-        let _ = sqlx::query(
-            "INSERT OR IGNORE INTO categories (id, name, slug, description, created_at) VALUES (?, ?, ?, '', ?)",
-        )
-        .bind(&cat_id)
-        .bind(category)
-        .bind(&slug)
-        .bind(&now)
-        .execute(&mut **tx)
-        .await;
-
-        // 查询实际分类 ID（可能已存在）
-        let row: Option<(String,)> =
-            sqlx::query_as("SELECT id FROM categories WHERE name = ?")
-                .bind(category)
-                .fetch_optional(&mut **tx)
-                .await
-                .ok()
-                .flatten();
-
-        if let Some((cid,)) = row {
-            let _ = sqlx::query(
-                "INSERT OR IGNORE INTO post_categories (post_id, category_id) VALUES (?, ?)",
-            )
-            .bind(post_id)
-            .bind(&cid)
-            .execute(&mut **tx)
-            .await;
-        }
     }
 }

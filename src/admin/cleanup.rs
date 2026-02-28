@@ -6,14 +6,8 @@ pub fn spawn_token_cleanup(state: AppState) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
         loop {
             interval.tick().await;
-            let now = chrono::Utc::now().to_rfc3339();
-            match sqlx::query("DELETE FROM revoked_tokens WHERE expires_at < ?")
-                .bind(&now)
-                .execute(&state.db)
-                .await
-            {
-                Ok(result) => {
-                    let rows = result.rows_affected();
+            match state.auth.cleanup_expired_tokens().await {
+                Ok(rows) => {
                     if rows > 0 {
                         tracing::info!("已清理 {} 条过期 token 记录", rows);
                     }

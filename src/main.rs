@@ -11,6 +11,7 @@ mod init;
 mod lua;
 mod media;
 mod plugin;
+mod repository;
 mod state;
 mod theme;
 

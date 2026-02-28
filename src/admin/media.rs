@@ -415,18 +415,59 @@ pub async fn api_upload_media(
         .into_response()
 }
 
+#[derive(Deserialize)]
+pub struct ApiListQuery {
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct PaginatedMedia {
+    items: Vec<MediaItem>,
+    total: i64,
+    page: u32,
+    per_page: u32,
+    total_pages: u32,
+}
+
 /// JSON 格式的媒体列表，供编辑器插入图片使用
-pub async fn api_media_list(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn api_media_list(
+    State(state): State<AppState>,
+    Query(params): Query<ApiListQuery>,
+) -> impl IntoResponse {
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = params.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM media")
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+
     let items: Vec<MediaItem> = sqlx::query_as::<_, MediaItem>(
         "SELECT id, filename, original_name, mime_type, size_bytes,
                 width, height, url, thumb_url, uploaded_at
-         FROM media ORDER BY uploaded_at DESC",
+         FROM media ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
     )
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
 
-    Json(items)
+    let total_pages = if total == 0 {
+        1
+    } else {
+        ((total as u32) + per_page - 1) / per_page
+    };
+
+    Json(PaginatedMedia {
+        items,
+        total,
+        page,
+        per_page,
+        total_pages,
+    })
 }
 
 fn render_upload_error(state: &AppState, message: &str) -> axum::response::Response {

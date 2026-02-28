@@ -7,39 +7,30 @@ use crate::state::AppState;
 
 pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
     #[derive(sqlx::FromRow)]
-    struct CountRow {
-        count: i64,
+    struct DashboardCounts {
+        published_posts: i64,
+        draft_posts: i64,
+        total_pages: i64,
+        total_media: i64,
     }
 
-    let total_posts = sqlx::query_as::<_, CountRow>(
-        "SELECT COUNT(*) as count FROM posts WHERE status != 'archived'",
+    let counts = sqlx::query_as::<_, DashboardCounts>(
+        r#"SELECT
+            (SELECT COUNT(*) FROM posts WHERE status = 'published') as published_posts,
+            (SELECT COUNT(*) FROM posts WHERE status = 'draft') as draft_posts,
+            (SELECT COUNT(*) FROM pages WHERE status != 'archived') as total_pages,
+            (SELECT COUNT(*) FROM media) as total_media"#,
     )
     .fetch_one(&state.db)
     .await
-    .map(|r| r.count)
-    .unwrap_or(0);
+    .unwrap_or(DashboardCounts {
+        published_posts: 0,
+        draft_posts: 0,
+        total_pages: 0,
+        total_media: 0,
+    });
 
-    let published_posts = sqlx::query_as::<_, CountRow>(
-        "SELECT COUNT(*) as count FROM posts WHERE status = 'published'",
-    )
-    .fetch_one(&state.db)
-    .await
-    .map(|r| r.count)
-    .unwrap_or(0);
-
-    let total_pages =
-        sqlx::query_as::<_, CountRow>("SELECT COUNT(*) as count FROM pages")
-            .fetch_one(&state.db)
-            .await
-            .map(|r| r.count)
-            .unwrap_or(0);
-
-    let total_media =
-        sqlx::query_as::<_, CountRow>("SELECT COUNT(*) as count FROM media")
-            .fetch_one(&state.db)
-            .await
-            .map(|r| r.count)
-            .unwrap_or(0);
+    let total_posts = counts.published_posts + counts.draft_posts;
 
     #[derive(sqlx::FromRow)]
     struct RecentPost {
@@ -88,9 +79,9 @@ pub async fn dashboard(State(state): State<AppState>) -> Html<String> {
         profile_active => false,
         site_url => crate::admin::settings::get_site_url(&state).await,
         total_posts => total_posts,
-        published_posts => published_posts,
-        total_pages => total_pages,
-        total_media => total_media,
+        published_posts => counts.published_posts,
+        total_pages => counts.total_pages,
+        total_media => counts.total_media,
         recent_posts => posts_ctx,
     };
 

@@ -1,22 +1,13 @@
 use axum::extract::{Form, Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use minijinja::context;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::Row;
 
 use crate::admin::layout;
 use crate::admin::template::render_admin;
+use crate::repository::category::Category;
 use crate::state::AppState;
-
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
-pub struct Category {
-    pub id: String,
-    pub name: String,
-    pub slug: String,
-    pub description: String,
-    pub parent_id: Option<String>,
-    pub created_at: String,
-}
 
 #[derive(Deserialize)]
 pub struct CategoryForm {
@@ -50,19 +41,7 @@ pub async fn list_categories(
     let per_page: i32 = 20;
     let offset = (page as i32 - 1) * per_page;
 
-    let rows = sqlx::query(
-        "SELECT c.id, c.name, c.slug, c.description, c.parent_id, c.created_at, \
-         (SELECT COUNT(*) FROM post_categories pc WHERE pc.category_id = c.id) AS post_count, \
-         p.name AS parent_name \
-         FROM categories c \
-         LEFT JOIN categories p ON c.parent_id = p.id \
-         ORDER BY c.created_at DESC LIMIT ? OFFSET ?",
-    )
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let rows = state.categories.list_with_counts(per_page, offset).await;
 
     let has_next = rows.len() as i32 == per_page;
 
@@ -114,7 +93,7 @@ pub async fn list_categories(
 }
 
 pub async fn new_category_page(State(state): State<AppState>) -> Html<String> {
-    let parent_options = build_parent_options(&state.db, None, None).await;
+    let parent_options = build_parent_options(&state, None, None).await;
 
     let active_path = "/admin/categories";
     let sidebar_groups = layout::sidebar_groups_value(active_path);
@@ -148,20 +127,8 @@ pub async fn create_category(
     };
     let description = form.description.as_deref().unwrap_or("");
     let parent_id = form.parent_id.as_deref().filter(|s| !s.is_empty());
-    let now = chrono::Utc::now().to_rfc3339();
 
-    if let Err(e) = sqlx::query(
-        "INSERT INTO categories (id, name, slug, description, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&form.name)
-    .bind(&slug)
-    .bind(description)
-    .bind(parent_id)
-    .bind(&now)
-    .execute(&state.db)
-    .await
-    {
+    if let Err(e) = state.categories.create(&id, &form.name, &slug, description, parent_id).await {
         tracing::error!("创建分类失败：{e}");
         return Redirect::to("/admin/categories/new?toast_msg=创建失败，名称或slug可能已存在&toast_type=error")
             .into_response();
@@ -179,20 +146,11 @@ pub async fn edit_category_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
-    let row = sqlx::query_as::<_, Category>(
-        "SELECT id, name, slug, description, parent_id, created_at FROM categories WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
     let active_path = "/admin/categories";
     let sidebar_groups = layout::sidebar_groups_value(active_path);
     let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, active_path);
 
-    let Some(cat) = row else {
+    let Some(cat) = state.categories.get_by_id(&id).await else {
         let ctx = context! {
             page_title => "分类不存在",
             site_title => crate::admin::settings::get_site_title(&state).await,
@@ -207,7 +165,7 @@ pub async fn edit_category_page(
         );
     };
 
-    let parent_options = build_parent_options(&state.db, Some(&cat.id), cat.parent_id.as_deref()).await;
+    let parent_options = build_parent_options(&state, Some(&cat.id), cat.parent_id.as_deref()).await;
 
     let cat_ctx = context! {
         id => &cat.id,
@@ -246,17 +204,7 @@ pub async fn update_category(
     let description = form.description.as_deref().unwrap_or("");
     let parent_id = form.parent_id.as_deref().filter(|s| !s.is_empty());
 
-    if let Err(e) = sqlx::query(
-        "UPDATE categories SET name = ?, slug = ?, description = ?, parent_id = ? WHERE id = ?",
-    )
-    .bind(&form.name)
-    .bind(&slug)
-    .bind(description)
-    .bind(parent_id)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    {
+    if let Err(e) = state.categories.update(&id, &form.name, &slug, description, parent_id).await {
         tracing::error!("更新分类失败：{e}");
         return Redirect::to(&format!(
             "/admin/categories/{id}?toast_msg=更新失败&toast_type=error"
@@ -276,10 +224,7 @@ pub async fn delete_category(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let _ = sqlx::query("DELETE FROM categories WHERE id = ?")
-        .bind(&id)
-        .execute(&state.db)
-        .await;
+    let _ = state.categories.delete(&id).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -290,28 +235,17 @@ pub async fn delete_category(
 }
 
 pub async fn api_list_categories(State(state): State<AppState>) -> Response {
-    let cats = sqlx::query_as::<_, Category>(
-        "SELECT id, name, slug, description, parent_id, created_at FROM categories ORDER BY name",
-    )
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
-
+    let cats = state.categories.list_all().await;
     axum::Json(cats).into_response()
 }
 
 /// 构建父分类选项列表，排除自身（编辑时），标记当前选中项
 async fn build_parent_options(
-    db: &sqlx::SqlitePool,
+    state: &AppState,
     exclude_id: Option<&str>,
     selected_parent_id: Option<&str>,
 ) -> Vec<minijinja::Value> {
-    let cats: Vec<Category> = sqlx::query_as(
-        "SELECT id, name, slug, description, parent_id, created_at FROM categories ORDER BY name",
-    )
-    .fetch_all(db)
-    .await
-    .unwrap_or_default();
+    let cats: Vec<Category> = state.categories.list_all().await;
 
     cats.iter()
         .filter(|cat| exclude_id != Some(cat.id.as_str()))

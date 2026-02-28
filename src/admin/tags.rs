@@ -1,21 +1,12 @@
 use axum::extract::{Form, Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use minijinja::context;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sqlx::Row;
 
 use crate::admin::layout;
 use crate::admin::template::render_admin;
 use crate::state::AppState;
-
-#[derive(Serialize, Deserialize, sqlx::FromRow)]
-pub struct Tag {
-    pub id: String,
-    pub name: String,
-    pub slug: String,
-    pub description: String,
-    pub created_at: String,
-}
 
 #[derive(Deserialize)]
 pub struct TagForm {
@@ -48,17 +39,7 @@ pub async fn list_tags(
     let per_page: i32 = 20;
     let offset = (page as i32 - 1) * per_page;
 
-    let rows = sqlx::query(
-        "SELECT t.id, t.name, t.slug, t.description, t.created_at, \
-         (SELECT COUNT(*) FROM post_tags pt WHERE pt.tag_id = t.id) AS post_count \
-         FROM tags t \
-         ORDER BY t.created_at DESC LIMIT ? OFFSET ?",
-    )
-    .bind(per_page)
-    .bind(offset)
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let rows = state.tags.list_with_counts(per_page, offset).await;
 
     let has_next = rows.len() as i32 == per_page;
 
@@ -138,19 +119,8 @@ pub async fn create_tag(
         _ => generate_slug(&form.name),
     };
     let description = form.description.as_deref().unwrap_or("");
-    let now = chrono::Utc::now().to_rfc3339();
 
-    if let Err(e) = sqlx::query(
-        "INSERT INTO tags (id, name, slug, description, created_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&form.name)
-    .bind(&slug)
-    .bind(description)
-    .bind(&now)
-    .execute(&state.db)
-    .await
-    {
+    if let Err(e) = state.tags.create(&id, &form.name, &slug, description).await {
         tracing::error!("创建标签失败：{e}");
         return Redirect::to(
             "/admin/tags/new?toast_msg=创建失败，名称或slug可能已存在&toast_type=error",
@@ -170,20 +140,11 @@ pub async fn edit_tag_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
-    let row = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, slug, description, created_at FROM tags WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
     let active_path = "/admin/tags";
     let sidebar_groups = layout::sidebar_groups_value(active_path);
     let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, active_path);
 
-    let Some(tag) = row else {
+    let Some(tag) = state.tags.get_by_id(&id).await else {
         let ctx = context! {
             page_title => "标签不存在",
             site_title => crate::admin::settings::get_site_title(&state).await,
@@ -233,16 +194,7 @@ pub async fn update_tag(
     };
     let description = form.description.as_deref().unwrap_or("");
 
-    if let Err(e) = sqlx::query(
-        "UPDATE tags SET name = ?, slug = ?, description = ? WHERE id = ?",
-    )
-    .bind(&form.name)
-    .bind(&slug)
-    .bind(description)
-    .bind(&id)
-    .execute(&state.db)
-    .await
-    {
+    if let Err(e) = state.tags.update(&id, &form.name, &slug, description).await {
         tracing::error!("更新标签失败：{e}");
         return Redirect::to(&format!(
             "/admin/tags/{id}?toast_msg=更新失败&toast_type=error"
@@ -262,10 +214,7 @@ pub async fn delete_tag(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let _ = sqlx::query("DELETE FROM tags WHERE id = ?")
-        .bind(&id)
-        .execute(&state.db)
-        .await;
+    let _ = state.tags.delete(&id).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -276,12 +225,6 @@ pub async fn delete_tag(
 }
 
 pub async fn api_list_tags(State(state): State<AppState>) -> Response {
-    let tags = sqlx::query_as::<_, Tag>(
-        "SELECT id, name, slug, description, created_at FROM tags ORDER BY name",
-    )
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
-
+    let tags = state.tags.list_all().await;
     axum::Json(tags).into_response()
 }

@@ -14,41 +14,30 @@ use crate::build::events::BuildEvent;
 use crate::state::AppState;
 
 pub async fn build_history(State(state): State<AppState>) -> Html<String> {
-    #[derive(sqlx::FromRow)]
-    struct BuildRow {
-        trigger: String,
-        status: String,
-        duration_ms: Option<i64>,
-        error: Option<String>,
-        started_at: String,
-        finished_at: Option<String>,
-    }
-
-    let rows: Vec<BuildRow> = sqlx::query_as::<_, BuildRow>(
-        "SELECT trigger, status, duration_ms, error, started_at, finished_at FROM build_history ORDER BY started_at DESC LIMIT 30",
-    )
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default();
+    let rows = state.builds.list_history(30).await;
 
     let builds: Vec<minijinja::Value> = rows
         .iter()
         .map(|row| {
-            let duration = row
-                .duration_ms
+            let trigger: &str = row.get("trigger");
+            let status: &str = row.get("status");
+            let duration_ms: Option<i64> = row.get("duration_ms");
+            let error: Option<&str> = row.get("error");
+            let started_at: &str = row.get("started_at");
+            let finished_at: Option<&str> = row.get("finished_at");
+
+            let duration = duration_ms
                 .map(|d| format!("{d}ms"))
                 .unwrap_or_else(|| "-".to_string());
-            let finished = row
-                .finished_at
-                .as_deref()
+            let finished = finished_at
                 .map(|f| if f == "-" { "-".to_string() } else { format_datetime(f) })
                 .unwrap_or_else(|| "-".to_string());
-            let error_full = row.error.as_deref().unwrap_or("");
+            let error_full = error.unwrap_or("");
             let error_short: String = error_full.chars().take(80).collect();
             context! {
-                started_at => format_datetime(&row.started_at),
-                trigger => html_escape(&row.trigger),
-                status => &row.status,
+                started_at => format_datetime(started_at),
+                trigger => html_escape(trigger),
+                status => status,
                 duration => duration,
                 finished_at => finished,
                 error => if error_short.is_empty() { None } else { Some(error_short) },
@@ -110,49 +99,34 @@ pub async fn spawn_build(state: &AppState, trigger: &str) {
     }
 
     // 预取主题配置
-    let theme_saved_config: std::collections::HashMap<String, serde_json::Value> =
-        sqlx::query("SELECT config FROM theme_config WHERE theme_name = ?")
-            .bind(&config.theme.active)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|row| {
-                let json_str: String = row.get("config");
-                serde_json::from_str(&json_str).ok()
-            })
-            .unwrap_or_default();
+    let theme_saved_config = state.builds.load_theme_config(&config.theme.active).await;
 
     // 预取发布状态的文章
     use crate::build::stages::load::DbPost;
 
-    let db_posts: Vec<DbPost> = sqlx::query(
-        "SELECT id, slug, title, content, status, created_at, updated_at, meta FROM posts WHERE status = 'published'"
-    )
-    .fetch_all(&state.db)
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .map(|row| {
-        let meta_str: String = row.get("meta");
-        let meta: serde_json::Value = serde_json::from_str(&meta_str).unwrap_or_default();
-        DbPost {
-            id: row.get("id"),
-            slug: row.get("slug"),
-            title: row.get("title"),
-            content: row.get("content"),
-            status: row.get("status"),
-            created_at: row.get("created_at"),
-            updated_at: row.get("updated_at"),
-            meta,
-        }
-    })
-    .collect();
+    let published_rows = state.posts.fetch_published().await;
+    let db_posts: Vec<DbPost> = published_rows
+        .into_iter()
+        .map(|row| {
+            let meta_str: String = row.get("meta");
+            let meta: serde_json::Value = serde_json::from_str(&meta_str).unwrap_or_default();
+            DbPost {
+                id: row.get("id"),
+                slug: row.get("slug"),
+                title: row.get("title"),
+                content: row.get("content"),
+                status: row.get("status"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                meta,
+            }
+        })
+        .collect();
 
     let project_root = state.project_root.clone();
-    let db = state.db.clone();
     let build_events = state.build_events.clone();
     let site_settings = state.site_settings.read().await.clone();
+    let builds_repo = state.builds.clone();
 
     let started_at = chrono::Utc::now().to_rfc3339();
 
@@ -203,21 +177,18 @@ pub async fn spawn_build(state: &AppState, trigger: &str) {
     let rebuilt = stats.as_ref().map(|s| s.rebuilt as i64);
     let cached = stats.as_ref().map(|s| s.cached as i64);
 
-    let _ = sqlx::query(
-        "INSERT INTO build_history (id, trigger, status, duration_ms, error, started_at, finished_at, total_pages, rebuilt, cached) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&trigger_str)
-    .bind(status)
-    .bind(duration_ms)
-    .bind(error.as_deref())
-    .bind(&started_at)
-    .bind(&finished_at)
-    .bind(total_pages)
-    .bind(rebuilt)
-    .bind(cached)
-    .execute(&db)
-    .await;
+    let _ = builds_repo.insert_history(&crate::repository::build::BuildHistoryParams {
+        id: &id,
+        trigger: &trigger_str,
+        status,
+        duration_ms,
+        error: error.as_deref(),
+        started_at: &started_at,
+        finished_at: &finished_at,
+        total_pages,
+        rebuilt,
+        cached,
+    }).await;
 }
 
 /// 异步触发构建，立即返回 202，构建在后台执行

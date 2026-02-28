@@ -41,33 +41,8 @@ pub async fn list_pages(
 ) -> Html<String> {
     let page = params.page.unwrap_or(1).max(1);
     let per_page: i32 = 20;
-    let offset = (page as i32 - 1) * per_page;
 
-    let rows = match params.status.as_deref() {
-        Some(status) => {
-            sqlx::query(
-                "SELECT id, title, slug, status, template, updated_at FROM pages \
-                 WHERE status = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(status)
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default()
-        }
-        None => {
-            sqlx::query(
-                "SELECT id, title, slug, status, template, updated_at FROM pages \
-                 WHERE status != 'archived' ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-            )
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(&state.db)
-            .await
-            .unwrap_or_default()
-        }
-    };
+    let rows = state.pages.list(page, per_page, params.status.as_deref()).await;
 
     let has_next = rows.len() as i32 == per_page;
 
@@ -154,21 +129,8 @@ pub async fn create_page(
     };
     let status = form.status.as_deref().unwrap_or("draft");
     let template = form.template.as_deref().filter(|s| !s.trim().is_empty());
-    let now = chrono::Utc::now().to_rfc3339();
 
-    let _ = sqlx::query(
-        "INSERT INTO pages (id, slug, title, content, status, template, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(&slug)
-    .bind(&form.title)
-    .bind(&form.content)
-    .bind(status)
-    .bind(template)
-    .bind(&now)
-    .bind(&now)
-    .execute(&state.db)
-    .await;
+    let _ = state.pages.create(&id, &slug, &form.title, &form.content, status, template).await;
 
     if status == "published" {
         let state_clone = state.clone();
@@ -184,16 +146,7 @@ pub async fn edit_page_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Html<String> {
-    let row = sqlx::query(
-        "SELECT id, slug, title, content, status, template FROM pages WHERE id = ?",
-    )
-    .bind(&id)
-    .fetch_optional(&state.db)
-    .await
-    .ok()
-    .flatten();
-
-    let Some(pg) = row else {
+    let Some(pg) = state.pages.get_by_id(&id).await else {
         return Html("<h1>页面不存在</h1>".to_string());
     };
 
@@ -240,20 +193,8 @@ pub async fn update_page(
     };
     let status = form.status.as_deref().unwrap_or("draft");
     let template = form.template.as_deref().filter(|s| !s.trim().is_empty());
-    let now = chrono::Utc::now().to_rfc3339();
 
-    let _ = sqlx::query(
-        "UPDATE pages SET title = ?, slug = ?, content = ?, status = ?, template = ?, updated_at = ? WHERE id = ?",
-    )
-    .bind(&form.title)
-    .bind(&slug)
-    .bind(&form.content)
-    .bind(status)
-    .bind(template)
-    .bind(&now)
-    .bind(&id)
-    .execute(&state.db)
-    .await;
+    let _ = state.pages.update(&id, &slug, &form.title, &form.content, status, template).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -267,12 +208,7 @@ pub async fn delete_page(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Redirect {
-    let now = chrono::Utc::now().to_rfc3339();
-    let _ = sqlx::query("UPDATE pages SET status = 'archived', updated_at = ? WHERE id = ?")
-        .bind(&now)
-        .bind(&id)
-        .execute(&state.db)
-        .await;
+    let _ = state.pages.delete(&id).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

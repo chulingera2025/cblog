@@ -25,14 +25,12 @@ pub async fn install_check_middleware(
     let installed = is_installed(&state).await;
 
     if !installed {
-        // 未安装，允许安装和健康检查路径通过
         if path.starts_with("/install") || path == "/health" {
             return next.run(req).await;
         }
         return Redirect::to("/install").into_response();
     }
 
-    // 已安装，阻止再次访问安装页面
     if path.starts_with("/install") {
         return Redirect::to("/admin").into_response();
     }
@@ -40,7 +38,7 @@ pub async fn install_check_middleware(
     next.run(req).await
 }
 
-// ── 安装页面 ──
+// -- 安装页面 --
 
 pub async fn install_page() -> Html<String> {
     Html(INSTALL_HTML.to_owned())
@@ -58,7 +56,6 @@ pub async fn install_submit(
     State(state): State<AppState>,
     Form(form): Form<InstallForm>,
 ) -> Response {
-    // 双重检查：已安装则拒绝
     if is_installed(&state).await {
         return Redirect::to("/admin").into_response();
     }
@@ -70,34 +67,14 @@ pub async fn install_submit(
         admin_email: form.admin_email,
     };
 
-    // 在事务中保存所有设置项，保证原子性
-    let save_result: Result<(), sqlx::Error> = async {
-        let mut tx = state.db.begin().await?;
+    let pairs: Vec<(&str, &str)> = vec![
+        ("site_title", &settings.site_title),
+        ("site_subtitle", &settings.site_subtitle),
+        ("site_url", &settings.site_url),
+        ("admin_email", &settings.admin_email),
+    ];
 
-        let pairs = [
-            ("site_title", &settings.site_title),
-            ("site_subtitle", &settings.site_subtitle),
-            ("site_url", &settings.site_url),
-            ("admin_email", &settings.admin_email),
-        ];
-
-        for (key, value) in pairs {
-            sqlx::query(
-                "INSERT INTO site_settings (key, value) VALUES (?, ?) \
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            )
-            .bind(key)
-            .bind(value)
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-        Ok(())
-    }
-    .await;
-
-    if let Err(e) = save_result {
+    if let Err(e) = state.settings_repo.save_pairs_tx(&pairs).await {
         tracing::error!("保存站点设置失败：{e}");
         return Redirect::to("/install?error=save_failed").into_response();
     }
@@ -108,10 +85,9 @@ pub async fn install_submit(
     Redirect::to("/install/register").into_response()
 }
 
-// ── 注册页面 ──
+// -- 注册页面 --
 
 pub async fn register_page(State(state): State<AppState>) -> Response {
-    // 已有用户时不允许访问注册页
     if is_installed(&state).await {
         return Redirect::to("/admin").into_response();
     }
@@ -154,20 +130,9 @@ pub async fn register_submit(
     };
 
     let id = ulid::Ulid::new().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
 
-    match sqlx::query(
-        "INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&id)
-    .bind(form.username.trim())
-    .bind(&password_hash)
-    .bind(&now)
-    .execute(&state.db)
-    .await
-    {
-        Ok(_) => {
-            // 标记为已安装
+    match state.auth.create_user(&id, form.username.trim(), &password_hash).await {
+        Ok(()) => {
             state.installed.store(true, Ordering::Relaxed);
             Redirect::to("/admin/login").into_response()
         }
@@ -178,7 +143,7 @@ pub async fn register_submit(
     }
 }
 
-// ── 安装页 HTML ──
+// -- 安装页 HTML --
 
 const INSTALL_HTML: &str = r#"<!DOCTYPE html>
 <html lang="zh-CN">
@@ -259,7 +224,7 @@ button[type=submit]:hover{background:#5851db}
 </body>
 </html>"#;
 
-// ── 注册页 HTML ──
+// -- 注册页 HTML --
 
 const REGISTER_HTML: &str = r#"<!DOCTYPE html>
 <html lang="zh-CN">

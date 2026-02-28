@@ -2,7 +2,6 @@ use axum::extract::{Form, State};
 use axum::response::{Html, Redirect};
 use minijinja::context;
 use serde::Deserialize;
-use sqlx::Row;
 use std::collections::HashMap;
 
 use crate::admin::template::render_admin;
@@ -90,18 +89,7 @@ pub async fn theme_settings(State(state): State<AppState>) -> Html<String> {
         }
     };
 
-    let saved: HashMap<String, serde_json::Value> =
-        sqlx::query("SELECT config FROM theme_config WHERE theme_name = ?")
-            .bind(active_theme)
-            .fetch_optional(&state.db)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|row| {
-                let json_str: String = row.get("config");
-                serde_json::from_str(&json_str).ok()
-            })
-            .unwrap_or_default();
+    let saved = state.builds.load_theme_config(active_theme).await;
 
     let values = config::effective_values(&resolved.config_schema, &saved);
 
@@ -238,14 +226,7 @@ pub async fn save_theme_settings(
 
     let json_str = serde_json::Value::Object(values).to_string();
 
-    let _ = sqlx::query(
-        "INSERT INTO theme_config (theme_name, config) VALUES (?, ?) \
-         ON CONFLICT(theme_name) DO UPDATE SET config = excluded.config",
-    )
-    .bind(active_theme)
-    .bind(&json_str)
-    .execute(&state.db)
-    .await;
+    let _ = state.builds.save_theme_config(active_theme, &json_str).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

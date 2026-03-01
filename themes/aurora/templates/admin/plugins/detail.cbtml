@@ -97,6 +97,7 @@ slot content
           for page in admin_pages
             a.btn.btn-primary [href="{{ page.href }}"] [style="margin-right:8px;margin-bottom:8px;"] {{ page.label }}
           end
+    end
 
     div.card
       div.card-header

@@ -399,6 +399,79 @@ impl PluginEngine {
         cblog
             .set("files", files)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // cblog.http.* — 网络请求能力
+        let http = lua
+            .create_table()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "get",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let resp = execute_http_request("GET", &url, headers, None, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "post",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let body = opts
+                    .as_ref()
+                    .and_then(|t| t.get::<String>("body").ok());
+                let resp = execute_http_request("POST", &url, headers, body, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "put",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let body = opts
+                    .as_ref()
+                    .and_then(|t| t.get::<String>("body").ok());
+                let resp = execute_http_request("PUT", &url, headers, body, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "delete",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let resp = execute_http_request("DELETE", &url, headers, None, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let root_http = self.project_root.clone();
+        http.set(
+            "put_file",
+            lua.create_function(move |lua, (url, filepath, opts): (String, String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let full = sandbox::resolve_path(&root_http, &filepath)?;
+                let resp = execute_http_request("PUT", &url, headers, None, Some(&full))?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        cblog
+            .set("http", http)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         globals
             .set("cblog", cblog)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -621,4 +694,126 @@ impl PluginEngine {
 
         Ok(())
     }
+}
+
+/// HTTP 响应的中间表示，用于转换为 Lua table
+struct HttpResponse {
+    status: u16,
+    body: String,
+    headers: Vec<(String, String)>,
+}
+
+impl HttpResponse {
+    fn to_lua_table(&self, lua: &Lua) -> Result<mlua::Table, mlua::Error> {
+        let tbl = lua.create_table()?;
+        tbl.set("status", self.status)?;
+        tbl.set("body", self.body.clone())?;
+        let hdrs = lua.create_table()?;
+        for (k, v) in &self.headers {
+            hdrs.set(k.as_str(), v.as_str())?;
+        }
+        tbl.set("headers", hdrs)?;
+        Ok(tbl)
+    }
+}
+
+/// 从 Lua opts table 中提取 headers 字段
+fn extract_headers_from_opts(
+    _lua: &Lua,
+    opts: Option<&mlua::Table>,
+) -> Result<Vec<(String, String)>, mlua::Error> {
+    let Some(opts) = opts else {
+        return Ok(Vec::new());
+    };
+    let Ok(headers_tbl) = opts.get::<mlua::Table>("headers") else {
+        return Ok(Vec::new());
+    };
+    let mut headers = Vec::new();
+    for pair in headers_tbl.pairs::<String, String>() {
+        let (k, v) = pair?;
+        headers.push((k, v));
+    }
+    Ok(headers)
+}
+
+/// 在同步上下文中执行 HTTP 请求
+/// Lua 运行时是同步的，需要桥接到 tokio 异步运行时
+fn execute_http_request(
+    method: &str,
+    url: &str,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+    file_path: Option<&std::path::Path>,
+) -> Result<HttpResponse, mlua::Error> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use std::time::Duration;
+
+    let exec = || async {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+        let mut header_map = HeaderMap::new();
+        for (k, v) in &headers {
+            let name = HeaderName::from_bytes(k.as_bytes())
+                .map_err(|e| format!("无效的 header name '{k}': {e}"))?;
+            let value = HeaderValue::from_str(v)
+                .map_err(|e| format!("无效的 header value '{v}': {e}"))?;
+            header_map.insert(name, value);
+        }
+
+        let mut req = match method {
+            "GET" => client.get(url),
+            "POST" => client.post(url),
+            "PUT" => client.put(url),
+            "DELETE" => client.delete(url),
+            _ => return Err(format!("不支持的 HTTP 方法: {method}")),
+        };
+
+        req = req.headers(header_map);
+
+        if let Some(fp) = file_path {
+            let data = std::fs::read(fp)
+                .map_err(|e| format!("读取文件失败 {}: {e}", fp.display()))?;
+            req = req.body(data);
+        } else if let Some(b) = body {
+            req = req.body(b);
+        }
+
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("HTTP 请求失败: {e}"))?;
+
+        let status = resp.status().as_u16();
+        let resp_headers: Vec<(String, String)> = resp
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let resp_body = resp
+            .text()
+            .await
+            .map_err(|e| format!("读取响应体失败: {e}"))?;
+
+        Ok(HttpResponse {
+            status,
+            body: resp_body,
+            headers: resp_headers,
+        })
+    };
+
+    // 尝试使用已有 tokio runtime，否则创建新的
+    let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(exec()))
+    } else {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| mlua::Error::external(format!("创建 tokio runtime 失败: {e}")))?
+            .block_on(exec())
+    };
+
+    result.map_err(mlua::Error::external)
 }

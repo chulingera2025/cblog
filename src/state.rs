@@ -26,6 +26,8 @@ pub struct AppState {
     pub login_limiter: Arc<std::sync::Mutex<HashMap<String, Vec<Instant>>>>,
     /// 插件注册的后台侧边栏页面
     pub plugin_admin_pages: Vec<PluginSidebarEntry>,
+    /// 已启用插件列表（可动态修改，与 cblog.toml 同步）
+    pub enabled_plugins: Arc<tokio::sync::RwLock<Vec<String>>>,
     /// 构建防抖计数器：用于判断是否有更新的构建请求
     pub build_request_counter: Arc<AtomicU64>,
     /// 构建互斥锁：确保任何时刻只有一个构建在执行
@@ -99,6 +101,8 @@ impl AppState {
 
         let is_https = config.site.url.starts_with("https://");
 
+        let enabled_plugins = config.plugins.enabled.clone();
+
         Ok(Self {
             db: pool.clone(),
             config: Arc::new(config),
@@ -106,6 +110,7 @@ impl AppState {
             build_events,
             login_limiter: Arc::new(std::sync::Mutex::new(HashMap::new())),
             plugin_admin_pages,
+            enabled_plugins: Arc::new(tokio::sync::RwLock::new(enabled_plugins)),
             build_request_counter: Arc::new(AtomicU64::new(0)),
             build_mutex: Arc::new(tokio::sync::Mutex::new(())),
             site_settings: Arc::new(tokio::sync::RwLock::new(site_settings)),

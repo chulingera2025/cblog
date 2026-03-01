@@ -86,7 +86,14 @@ pub async fn spawn_build(state: &AppState, trigger: &str) {
         trigger: trigger_str.clone(),
     });
 
-    let config = Arc::clone(&state.config);
+    // 从文件重新加载配置，确保使用最新的插件启用状态
+    let config = match crate::config::SiteConfig::load(&state.project_root) {
+        Ok(c) => Arc::new(c),
+        Err(e) => {
+            tracing::warn!("重新加载配置失败，使用缓存配置：{e}");
+            Arc::clone(&state.config)
+        }
+    };
 
     // 预取插件配置
     let mut plugin_configs = std::collections::HashMap::new();

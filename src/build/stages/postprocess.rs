@@ -21,6 +21,14 @@ const SYNTAX_HIGHLIGHT_CSS: &str = r#"<style>
 .code-highlight .meta { color: #abb2bf; }
 </style>"#;
 
+const TOC_CSS: &str = r#"<style>
+html { scroll-behavior: smooth; }
+.toc-list { list-style: none; padding-left: 0; }
+.toc-list li { margin: 4px 0; }
+.toc-list a { color: #4a6cf7; text-decoration: none; }
+.toc-list a:hover { text-decoration: underline; }
+</style>"#;
+
 /// 对渲染后的 HTML 进行后处理（写入磁盘前）
 pub fn apply(html: String, config: &SiteConfig) -> String {
     let mut html = html;
@@ -29,10 +37,13 @@ pub fn apply(html: String, config: &SiteConfig) -> String {
         html = add_lazy_loading(html);
     }
 
-    // CSS 注入：syntax-highlight
+    // CSS 注入：syntax-highlight + toc，合并为一次 </head> 替换
     let mut head_inject = String::new();
     if config.features.syntax_highlight.enabled && html.contains("code-highlight") {
         head_inject.push_str(SYNTAX_HIGHLIGHT_CSS);
+    }
+    if config.features.toc.enabled && html.contains("toc-list") {
+        head_inject.push_str(TOC_CSS);
     }
 
     if !head_inject.is_empty() {

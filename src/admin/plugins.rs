@@ -255,6 +255,7 @@ pub async fn plugin_detail(
 pub async fn save_plugin_config(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    headers: axum::http::HeaderMap,
     Form(form): Form<HashMap<String, String>>,
 ) -> Redirect {
     for (key, value) in &form {
@@ -263,6 +264,16 @@ pub async fn save_plugin_config(
         }
         let json_value = serde_json::Value::String(value.clone());
         let _ = PluginStore::set(&state.db, &name, key, &json_value).await;
+    }
+
+    // 优先返回来源页（如插件自定义设置页面），否则跳转到插件详情页
+    if let Some(referer) = headers.get(axum::http::header::REFERER).and_then(|v| v.to_str().ok()) {
+        if let Ok(uri) = referer.parse::<axum::http::Uri>() {
+            let path = uri.path();
+            if path.starts_with("/admin/") {
+                return Redirect::to(path);
+            }
+        }
     }
 
     Redirect::to(&format!("/admin/plugins/{}", name))

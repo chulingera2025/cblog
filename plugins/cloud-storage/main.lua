@@ -1,10 +1,3 @@
--- 计算文件的 SHA-256 哈希（十六进制），用于 S3 签名
-local function file_sha256_hex(filepath)
-    local content = cblog.files.read(filepath)
-    -- 使用简化的哈希标识：对于文件上传场景使用 UNSIGNED-PAYLOAD 更通用
-    return "UNSIGNED-PAYLOAD"
-end
-
 -- 根据文件扩展名推断 Content-Type
 local function guess_content_type(filename)
     local ext = filename:match("%.([^%.]+)$")

@@ -40,11 +40,27 @@ pub async fn list_plugins(State(state): State<AppState>) -> Html<String> {
 
             let is_enabled = enabled.contains(name);
 
+            let admin_pages: Vec<minijinja::Value> = load_plugin_toml(&toml_path)
+                .map(|toml| {
+                    toml.admin
+                        .pages
+                        .iter()
+                        .map(|p| {
+                            context! {
+                                label => &p.label,
+                                href => format!("/admin/ext/{}/{}", name, p.slug),
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
             context! {
                 name => name,
                 version => version,
                 description => description,
                 is_enabled => is_enabled,
+                admin_pages => admin_pages,
             }
         })
         .collect();

@@ -10,7 +10,7 @@ use crate::state::AppState;
 
 pub async fn list_plugins(State(state): State<AppState>) -> Html<String> {
     let available = list_available_plugins(&state.project_root).unwrap_or_default();
-    let enabled = &state.config.plugins.enabled;
+    let enabled = state.enabled_plugins.read().await;
 
     let plugins: Vec<minijinja::Value> = available
         .iter()
@@ -83,7 +83,7 @@ pub async fn toggle_plugin(
         return Redirect::to("/admin/plugins");
     };
 
-    let mut current_enabled: Vec<String> = state.config.plugins.enabled.clone();
+    let mut current_enabled: Vec<String> = state.enabled_plugins.read().await.clone();
     if let Some(pos) = current_enabled.iter().position(|n| n == plugin_name) {
         current_enabled.remove(pos);
     } else {
@@ -141,6 +141,9 @@ pub async fn toggle_plugin(
 
     let _ = std::fs::write(&config_path, final_content);
 
+    // 同步更新内存中的启用列表
+    *state.enabled_plugins.write().await = current_enabled;
+
     Redirect::to("/admin/plugins")
 }
 
@@ -178,7 +181,7 @@ pub async fn plugin_detail(
         }
     };
 
-    let is_enabled = state.config.plugins.enabled.contains(&name);
+    let is_enabled = state.enabled_plugins.read().await.contains(&name);
 
     let plugin_version = if info.version.is_empty() {
         None

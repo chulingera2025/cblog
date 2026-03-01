@@ -105,23 +105,18 @@ fn copy_media(project_root: &Path, output_dir: &Path) -> Result<()> {
         return Ok(());
     }
     let media_dest = output_dir.join("media");
-    copy_dir_recursive(&media_src, &media_dest)?;
-    tracing::info!("已复制 media 目录");
-    Ok(())
-}
 
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dest_path = dest.join(entry.file_name());
-
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dest_path)?;
+    if media_dest.exists() || media_dest.is_symlink() {
+        if media_dest.is_symlink() {
+            std::fs::remove_file(&media_dest)?;
         } else {
-            std::fs::copy(&src_path, &dest_path)?;
+            std::fs::remove_dir_all(&media_dest)?;
         }
     }
+
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&media_src, &media_dest)?;
+
+    tracing::info!("已创建 media 符号链接");
     Ok(())
 }

@@ -134,6 +134,10 @@ pub async fn create_category(
             .into_response();
     }
 
+    state.call_hook("after_category_create", &serde_json::json!({
+        "id": id, "name": form.name, "slug": slug
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:create_category").await;
@@ -212,6 +216,10 @@ pub async fn update_category(
         .into_response();
     }
 
+    state.call_hook("after_category_update", &serde_json::json!({
+        "id": id, "name": form.name, "slug": slug
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:update_category").await;
@@ -225,6 +233,10 @@ pub async fn delete_category(
     Path(id): Path<String>,
 ) -> Redirect {
     let _ = state.categories.delete(&id).await;
+
+    state.call_hook("after_category_delete", &serde_json::json!({
+        "id": id
+    })).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

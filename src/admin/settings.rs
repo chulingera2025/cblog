@@ -151,8 +151,16 @@ pub async fn save_settings(
         return Redirect::to("/admin/settings?toast_msg=保存失败&toast_type=error").into_response();
     }
 
+    let hook_site_title = settings.site_title.clone();
+    let hook_site_url = settings.site_url.clone();
+
     // 更新内存缓存
     *state.site_settings.write().await = settings;
+
+    state.call_hook("after_settings_save", &serde_json::json!({
+        "site_title": hook_site_title,
+        "site_url": hook_site_url
+    })).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

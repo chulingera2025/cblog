@@ -158,7 +158,14 @@ pub async fn toggle_plugin(
     let _ = std::fs::write(&config_path, final_content);
 
     // 同步更新内存中的启用列表
+    let is_enabled = current_enabled.contains(plugin_name);
     *state.enabled_plugins.write().await = current_enabled;
+
+    state.call_hook("after_plugin_toggle", &serde_json::json!({
+        "plugin_name": plugin_name,
+        "enabled": is_enabled
+    })).await;
+    state.reload_runtime_plugins().await;
 
     Redirect::to("/admin/plugins")
 }
@@ -282,13 +289,18 @@ pub async fn save_plugin_config(
         let _ = PluginStore::set(&state.db, &name, key, &json_value).await;
     }
 
+    state.call_hook("after_plugin_config_save", &serde_json::json!({
+        "plugin_name": name
+    })).await;
+    state.reload_runtime_plugins().await;
+
     // 优先返回来源页（如插件自定义设置页面），否则跳转到插件详情页
-    if let Some(referer) = headers.get(axum::http::header::REFERER).and_then(|v| v.to_str().ok()) {
-        if let Ok(uri) = referer.parse::<axum::http::Uri>() {
-            let path = uri.path();
-            if path.starts_with("/admin/") {
-                return Redirect::to(path);
-            }
+    if let Some(referer) = headers.get(axum::http::header::REFERER).and_then(|v| v.to_str().ok())
+        && let Ok(uri) = referer.parse::<axum::http::Uri>()
+    {
+        let path = uri.path();
+        if path.starts_with("/admin/") {
+            return Redirect::to(path);
         }
     }
 

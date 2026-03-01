@@ -128,6 +128,10 @@ pub async fn create_tag(
         .into_response();
     }
 
+    state.call_hook("after_tag_create", &serde_json::json!({
+        "id": id, "name": form.name, "slug": slug
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:create_tag").await;
@@ -202,6 +206,10 @@ pub async fn update_tag(
         .into_response();
     }
 
+    state.call_hook("after_tag_update", &serde_json::json!({
+        "id": id, "name": form.name, "slug": slug
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:update_tag").await;
@@ -215,6 +223,10 @@ pub async fn delete_tag(
     Path(id): Path<String>,
 ) -> Redirect {
     let _ = state.tags.delete(&id).await;
+
+    state.call_hook("after_tag_delete", &serde_json::json!({
+        "id": id
+    })).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

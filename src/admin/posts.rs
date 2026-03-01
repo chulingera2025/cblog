@@ -121,6 +121,11 @@ pub async fn new_post_page(State(state): State<AppState>) -> Response {
         return Redirect::to("/admin/posts").into_response();
     }
 
+    state.call_hook("after_post_create", &serde_json::json!({
+        "id": id,
+        "slug": slug
+    })).await;
+
     Redirect::to(&format!("/admin/posts/{id}")).into_response()
 }
 
@@ -218,6 +223,13 @@ pub async fn update_post(
         return Redirect::to(&format!("/admin/posts/{id}"));
     }
 
+    state.call_hook("after_post_update", &serde_json::json!({
+        "id": id,
+        "slug": slug,
+        "title": form.title,
+        "status": status
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:update_post").await;
@@ -231,6 +243,10 @@ pub async fn delete_post(
     Path(id): Path<String>,
 ) -> Redirect {
     let _ = state.posts.delete(&id).await;
+
+    state.call_hook("after_post_delete", &serde_json::json!({
+        "id": id
+    })).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {
@@ -246,6 +262,10 @@ pub async fn publish_post(
 ) -> Redirect {
     let _ = state.posts.publish(&id).await;
 
+    state.call_hook("after_post_publish", &serde_json::json!({
+        "id": id
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:publish_post").await;
@@ -259,6 +279,10 @@ pub async fn unpublish_post(
     Path(id): Path<String>,
 ) -> Redirect {
     let _ = state.posts.unpublish(&id).await;
+
+    state.call_hook("after_post_unpublish", &serde_json::json!({
+        "id": id
+    })).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

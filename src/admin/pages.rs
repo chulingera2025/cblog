@@ -132,6 +132,10 @@ pub async fn create_page(
 
     let _ = state.pages.create(&id, &slug, &form.title, &form.content, status, template).await;
 
+    state.call_hook("after_page_create", &serde_json::json!({
+        "id": id, "slug": slug, "title": form.title, "status": status
+    })).await;
+
     if status == "published" {
         let state_clone = state.clone();
         tokio::spawn(async move {
@@ -196,6 +200,10 @@ pub async fn update_page(
 
     let _ = state.pages.update(&id, &slug, &form.title, &form.content, status, template).await;
 
+    state.call_hook("after_page_update", &serde_json::json!({
+        "id": id, "slug": slug, "title": form.title, "status": status
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:update_page").await;
@@ -209,6 +217,8 @@ pub async fn delete_page(
     Path(id): Path<String>,
 ) -> Redirect {
     let _ = state.pages.delete(&id).await;
+
+    state.call_hook("after_page_delete", &serde_json::json!({"id": id})).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

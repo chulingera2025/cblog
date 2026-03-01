@@ -228,6 +228,10 @@ pub async fn save_theme_settings(
 
     let _ = state.builds.save_theme_config(active_theme, &json_str).await;
 
+    state.call_hook("after_theme_save", &serde_json::json!({
+        "theme_name": active_theme
+    })).await;
+
     let state_clone = state.clone();
     tokio::spawn(async move {
         crate::admin::build::spawn_build(&state_clone, "auto:save_theme").await;
@@ -280,6 +284,10 @@ pub async fn switch_theme(
 
         let _ = std::fs::write(&config_path, final_content);
     }
+
+    state.call_hook("after_theme_switch", &serde_json::json!({
+        "theme_name": form.theme_name
+    })).await;
 
     let state_clone = state.clone();
     tokio::spawn(async move {

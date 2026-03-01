@@ -472,6 +472,62 @@ impl PluginEngine {
             .set("http", http)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+        // cblog.s3.* — AWS Signature V4 签名辅助
+        let s3 = lua
+            .create_table()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        s3.set(
+            "sign_headers",
+            lua.create_function(
+                |lua,
+                 (method, url, region, access_key, secret_key, headers, payload_hash): (
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<mlua::Table>,
+                    Option<String>,
+                )| {
+                    let extra_headers = if let Some(h) = headers.as_ref() {
+                        let mut v = Vec::new();
+                        for pair in h.pairs::<String, String>() {
+                            let (k, val) = pair?;
+                            v.push((k, val));
+                        }
+                        v
+                    } else {
+                        Vec::new()
+                    };
+
+                    let payload = payload_hash.as_deref().unwrap_or("UNSIGNED-PAYLOAD");
+                    let signed = compute_s3_signature(
+                        &method,
+                        &url,
+                        &region,
+                        &access_key,
+                        &secret_key,
+                        &extra_headers,
+                        payload,
+                    )
+                    .map_err(mlua::Error::external)?;
+
+                    let tbl = lua.create_table()?;
+                    for (k, v) in &signed {
+                        tbl.set(k.as_str(), v.as_str())?;
+                    }
+                    Ok(tbl)
+                },
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        cblog
+            .set("s3", s3)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         globals
             .set("cblog", cblog)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -816,4 +872,121 @@ fn execute_http_request(
     };
 
     result.map_err(mlua::Error::external)
+}
+
+/// AWS Signature V4 签名计算
+/// 返回签名后需要附加到请求的 headers（包含 Authorization, x-amz-date, x-amz-content-sha256, host）
+fn compute_s3_signature(
+    method: &str,
+    url: &str,
+    region: &str,
+    access_key: &str,
+    secret_key: &str,
+    extra_headers: &[(String, String)],
+    payload_hash: &str,
+) -> Result<Vec<(String, String)>, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::{Digest, Sha256};
+
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("URL 解析失败: {e}"))?;
+    let host = parsed
+        .host_str()
+        .ok_or("URL 中缺少 host")?
+        .to_string();
+    let path = parsed.path().to_string();
+    let query = parsed.query().unwrap_or("").to_string();
+
+    let now = chrono::Utc::now();
+    let date_stamp = now.format("%Y%m%d").to_string();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+
+    // 构建所有需要签名的 headers
+    let mut sign_headers: Vec<(String, String)> = vec![
+        ("host".to_string(), host.clone()),
+        ("x-amz-content-sha256".to_string(), payload_hash.to_string()),
+        ("x-amz-date".to_string(), amz_date.clone()),
+    ];
+    for (k, v) in extra_headers {
+        let lower_k = k.to_lowercase();
+        if lower_k != "host" && lower_k != "x-amz-content-sha256" && lower_k != "x-amz-date" {
+            sign_headers.push((lower_k, v.clone()));
+        }
+    }
+    sign_headers.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let signed_headers_str: String = sign_headers
+        .iter()
+        .map(|(k, _)| k.as_str())
+        .collect::<Vec<_>>()
+        .join(";");
+
+    let canonical_headers: String = sign_headers
+        .iter()
+        .map(|(k, v)| format!("{}:{}\n", k, v.trim()))
+        .collect();
+
+    let canonical_request = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        method, path, query, canonical_headers, signed_headers_str, payload_hash
+    );
+
+    let scope = format!("{}/{}/s3/aws4_request", date_stamp, region);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{:x}",
+        amz_date,
+        scope,
+        Sha256::digest(canonical_request.as_bytes())
+    );
+
+    type HmacSha256 = Hmac<Sha256>;
+
+    let signing_key = {
+        let k_date = HmacSha256::new_from_slice(format!("AWS4{}", secret_key).as_bytes())
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(date_stamp.as_bytes())
+            .finalize()
+            .into_bytes();
+        let k_region = HmacSha256::new_from_slice(&k_date)
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(region.as_bytes())
+            .finalize()
+            .into_bytes();
+        let k_service = HmacSha256::new_from_slice(&k_region)
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(b"s3")
+            .finalize()
+            .into_bytes();
+        HmacSha256::new_from_slice(&k_service)
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(b"aws4_request")
+            .finalize()
+            .into_bytes()
+    };
+
+    let signature = HmacSha256::new_from_slice(&signing_key)
+        .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+        .chain_update(string_to_sign.as_bytes())
+        .finalize()
+        .into_bytes();
+    let signature_hex: String = signature.iter().map(|b| format!("{b:02x}")).collect();
+
+    let authorization = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        access_key, scope, signed_headers_str, signature_hex
+    );
+
+    let mut result = vec![
+        ("Authorization".to_string(), authorization),
+        ("x-amz-date".to_string(), amz_date),
+        ("x-amz-content-sha256".to_string(), payload_hash.to_string()),
+        ("host".to_string(), host),
+    ];
+    for (k, v) in extra_headers {
+        let lower_k = k.to_lowercase();
+        if lower_k != "host" && lower_k != "x-amz-content-sha256" && lower_k != "x-amz-date" {
+            result.push((k.clone(), v.clone()));
+        }
+    }
+
+    Ok(result)
 }

@@ -399,6 +399,135 @@ impl PluginEngine {
         cblog
             .set("files", files)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // cblog.http.* — 网络请求能力
+        let http = lua
+            .create_table()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "get",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let resp = execute_http_request("GET", &url, headers, None, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "post",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let body = opts
+                    .as_ref()
+                    .and_then(|t| t.get::<String>("body").ok());
+                let resp = execute_http_request("POST", &url, headers, body, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "put",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let body = opts
+                    .as_ref()
+                    .and_then(|t| t.get::<String>("body").ok());
+                let resp = execute_http_request("PUT", &url, headers, body, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        http.set(
+            "delete",
+            lua.create_function(|lua, (url, opts): (String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let resp = execute_http_request("DELETE", &url, headers, None, None)?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let root_http = self.project_root.clone();
+        http.set(
+            "put_file",
+            lua.create_function(move |lua, (url, filepath, opts): (String, String, Option<mlua::Table>)| {
+                let headers = extract_headers_from_opts(lua, opts.as_ref())?;
+                let full = sandbox::resolve_path(&root_http, &filepath)?;
+                let resp = execute_http_request("PUT", &url, headers, None, Some(&full))?;
+                resp.to_lua_table(lua)
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        cblog
+            .set("http", http)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // cblog.s3.* — AWS Signature V4 签名辅助
+        let s3 = lua
+            .create_table()
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        s3.set(
+            "sign_headers",
+            lua.create_function(
+                |lua,
+                 (method, url, region, access_key, secret_key, headers, payload_hash): (
+                    String,
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<mlua::Table>,
+                    Option<String>,
+                )| {
+                    let extra_headers = if let Some(h) = headers.as_ref() {
+                        let mut v = Vec::new();
+                        for pair in h.pairs::<String, String>() {
+                            let (k, val) = pair?;
+                            v.push((k, val));
+                        }
+                        v
+                    } else {
+                        Vec::new()
+                    };
+
+                    let payload = payload_hash.as_deref().unwrap_or("UNSIGNED-PAYLOAD");
+                    let signed = compute_s3_signature(
+                        &method,
+                        &url,
+                        &region,
+                        &access_key,
+                        &secret_key,
+                        &extra_headers,
+                        payload,
+                    )
+                    .map_err(mlua::Error::external)?;
+
+                    let tbl = lua.create_table()?;
+                    for (k, v) in &signed {
+                        tbl.set(k.as_str(), v.as_str())?;
+                    }
+                    Ok(tbl)
+                },
+            )
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        cblog
+            .set("s3", s3)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
         globals
             .set("cblog", cblog)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -621,4 +750,243 @@ impl PluginEngine {
 
         Ok(())
     }
+}
+
+/// HTTP 响应的中间表示，用于转换为 Lua table
+struct HttpResponse {
+    status: u16,
+    body: String,
+    headers: Vec<(String, String)>,
+}
+
+impl HttpResponse {
+    fn to_lua_table(&self, lua: &Lua) -> Result<mlua::Table, mlua::Error> {
+        let tbl = lua.create_table()?;
+        tbl.set("status", self.status)?;
+        tbl.set("body", self.body.clone())?;
+        let hdrs = lua.create_table()?;
+        for (k, v) in &self.headers {
+            hdrs.set(k.as_str(), v.as_str())?;
+        }
+        tbl.set("headers", hdrs)?;
+        Ok(tbl)
+    }
+}
+
+/// 从 Lua opts table 中提取 headers 字段
+fn extract_headers_from_opts(
+    _lua: &Lua,
+    opts: Option<&mlua::Table>,
+) -> Result<Vec<(String, String)>, mlua::Error> {
+    let Some(opts) = opts else {
+        return Ok(Vec::new());
+    };
+    let Ok(headers_tbl) = opts.get::<mlua::Table>("headers") else {
+        return Ok(Vec::new());
+    };
+    let mut headers = Vec::new();
+    for pair in headers_tbl.pairs::<String, String>() {
+        let (k, v) = pair?;
+        headers.push((k, v));
+    }
+    Ok(headers)
+}
+
+/// 在同步上下文中执行 HTTP 请求
+/// Lua 运行时是同步的，需要桥接到 tokio 异步运行时
+fn execute_http_request(
+    method: &str,
+    url: &str,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+    file_path: Option<&std::path::Path>,
+) -> Result<HttpResponse, mlua::Error> {
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use std::time::Duration;
+
+    let exec = || async {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| format!("创建 HTTP 客户端失败: {e}"))?;
+
+        let mut header_map = HeaderMap::new();
+        for (k, v) in &headers {
+            let name = HeaderName::from_bytes(k.as_bytes())
+                .map_err(|e| format!("无效的 header name '{k}': {e}"))?;
+            let value = HeaderValue::from_str(v)
+                .map_err(|e| format!("无效的 header value '{v}': {e}"))?;
+            header_map.insert(name, value);
+        }
+
+        let mut req = match method {
+            "GET" => client.get(url),
+            "POST" => client.post(url),
+            "PUT" => client.put(url),
+            "DELETE" => client.delete(url),
+            _ => return Err(format!("不支持的 HTTP 方法: {method}")),
+        };
+
+        req = req.headers(header_map);
+
+        if let Some(fp) = file_path {
+            let data = std::fs::read(fp)
+                .map_err(|e| format!("读取文件失败 {}: {e}", fp.display()))?;
+            req = req.body(data);
+        } else if let Some(b) = body {
+            req = req.body(b);
+        }
+
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| format!("HTTP 请求失败: {e}"))?;
+
+        let status = resp.status().as_u16();
+        let resp_headers: Vec<(String, String)> = resp
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let resp_body = resp
+            .text()
+            .await
+            .map_err(|e| format!("读取响应体失败: {e}"))?;
+
+        Ok(HttpResponse {
+            status,
+            body: resp_body,
+            headers: resp_headers,
+        })
+    };
+
+    // 尝试使用已有 tokio runtime，否则创建新的
+    let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        tokio::task::block_in_place(|| handle.block_on(exec()))
+    } else {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| mlua::Error::external(format!("创建 tokio runtime 失败: {e}")))?
+            .block_on(exec())
+    };
+
+    result.map_err(mlua::Error::external)
+}
+
+/// AWS Signature V4 签名计算
+/// 返回签名后需要附加到请求的 headers（包含 Authorization, x-amz-date, x-amz-content-sha256, host）
+fn compute_s3_signature(
+    method: &str,
+    url: &str,
+    region: &str,
+    access_key: &str,
+    secret_key: &str,
+    extra_headers: &[(String, String)],
+    payload_hash: &str,
+) -> Result<Vec<(String, String)>, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::{Digest, Sha256};
+
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("URL 解析失败: {e}"))?;
+    let host = parsed
+        .host_str()
+        .ok_or("URL 中缺少 host")?
+        .to_string();
+    let path = parsed.path().to_string();
+    let query = parsed.query().unwrap_or("").to_string();
+
+    let now = chrono::Utc::now();
+    let date_stamp = now.format("%Y%m%d").to_string();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+
+    // 构建所有需要签名的 headers
+    let mut sign_headers: Vec<(String, String)> = vec![
+        ("host".to_string(), host.clone()),
+        ("x-amz-content-sha256".to_string(), payload_hash.to_string()),
+        ("x-amz-date".to_string(), amz_date.clone()),
+    ];
+    for (k, v) in extra_headers {
+        let lower_k = k.to_lowercase();
+        if lower_k != "host" && lower_k != "x-amz-content-sha256" && lower_k != "x-amz-date" {
+            sign_headers.push((lower_k, v.clone()));
+        }
+    }
+    sign_headers.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let signed_headers_str: String = sign_headers
+        .iter()
+        .map(|(k, _)| k.as_str())
+        .collect::<Vec<_>>()
+        .join(";");
+
+    let canonical_headers: String = sign_headers
+        .iter()
+        .map(|(k, v)| format!("{}:{}\n", k, v.trim()))
+        .collect();
+
+    let canonical_request = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        method, path, query, canonical_headers, signed_headers_str, payload_hash
+    );
+
+    let scope = format!("{}/{}/s3/aws4_request", date_stamp, region);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{:x}",
+        amz_date,
+        scope,
+        Sha256::digest(canonical_request.as_bytes())
+    );
+
+    type HmacSha256 = Hmac<Sha256>;
+
+    let signing_key = {
+        let k_date = HmacSha256::new_from_slice(format!("AWS4{}", secret_key).as_bytes())
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(date_stamp.as_bytes())
+            .finalize()
+            .into_bytes();
+        let k_region = HmacSha256::new_from_slice(&k_date)
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(region.as_bytes())
+            .finalize()
+            .into_bytes();
+        let k_service = HmacSha256::new_from_slice(&k_region)
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(b"s3")
+            .finalize()
+            .into_bytes();
+        HmacSha256::new_from_slice(&k_service)
+            .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+            .chain_update(b"aws4_request")
+            .finalize()
+            .into_bytes()
+    };
+
+    let signature = HmacSha256::new_from_slice(&signing_key)
+        .map_err(|e| format!("HMAC 初始化失败: {e}"))?
+        .chain_update(string_to_sign.as_bytes())
+        .finalize()
+        .into_bytes();
+    let signature_hex: String = signature.iter().map(|b| format!("{b:02x}")).collect();
+
+    let authorization = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        access_key, scope, signed_headers_str, signature_hex
+    );
+
+    let mut result = vec![
+        ("Authorization".to_string(), authorization),
+        ("x-amz-date".to_string(), amz_date),
+        ("x-amz-content-sha256".to_string(), payload_hash.to_string()),
+        ("host".to_string(), host),
+    ];
+    for (k, v) in extra_headers {
+        let lower_k = k.to_lowercase();
+        if lower_k != "host" && lower_k != "x-amz-content-sha256" && lower_k != "x-amz-date" {
+            result.push((k.clone(), v.clone()));
+        }
+    }
+
+    Ok(result)
 }

@@ -70,7 +70,7 @@ image = "0.25"
 grass = "0.13"
 
 # Lua 运行时
-mlua = { version = "0.11", features = ["lua54", "serde", "vendored"] }
+mlua = { version = "0.11", features = ["lua54", "serde", "vendored", "send"] }
 
 # HTTP 客户端（Lua 插件网络请求）
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }

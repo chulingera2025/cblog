@@ -2,6 +2,8 @@ use crate::admin::layout::PluginSidebarEntry;
 use crate::admin::settings::SiteSettings;
 use crate::build::events::BuildEvent;
 use crate::config::SiteConfig;
+use crate::lua::runtime::PluginEngine;
+use crate::plugin::store::PluginStore;
 use crate::repository::{
     AuthRepository, BuildRepository, CategoryRepository, MediaRepository, PageRepository,
     PostRepository, SettingsRepository, TagRepository,
@@ -42,6 +44,8 @@ pub struct AppState {
     pub jwt_secret: Arc<String>,
     /// 站点是否通过 HTTPS 提供服务（根据 site_url 判断）
     pub is_https: bool,
+    /// 运行时插件引擎（Web 服务期间用于执行钩子）
+    pub runtime_plugins: Arc<tokio::sync::Mutex<Option<PluginEngine>>>,
     // -- Repository 层 --
     pub posts: PostRepository,
     pub pages: PageRepository,
@@ -103,6 +107,33 @@ impl AppState {
 
         let enabled_plugins = config.plugins.enabled.clone();
 
+        // 初始化运行时插件引擎
+        let runtime_plugins = {
+            let mut plugin_configs = HashMap::new();
+            for name in &enabled_plugins {
+                if let Ok(configs) = PluginStore::get_all(&pool, name).await
+                    && !configs.is_empty()
+                {
+                    plugin_configs.insert(name.clone(), configs);
+                }
+            }
+            match PluginEngine::new(&project_root, &config, plugin_configs) {
+                Ok(mut engine) => {
+                    if let Err(e) = engine.load_plugins(&enabled_plugins) {
+                        tracing::error!("运行时插件加载失败: {e}");
+                        None
+                    } else {
+                        tracing::info!("运行时插件引擎已就绪");
+                        Some(engine)
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("运行时插件引擎创建失败: {e}");
+                    None
+                }
+            }
+        };
+
         Ok(Self {
             db: pool.clone(),
             config: Arc::new(config),
@@ -118,6 +149,7 @@ impl AppState {
             admin_env: Arc::new(admin_env),
             jwt_secret: Arc::new(jwt_secret),
             is_https,
+            runtime_plugins: Arc::new(tokio::sync::Mutex::new(runtime_plugins)),
             posts: PostRepository::new(pool.clone()),
             pages: PageRepository::new(pool.clone()),
             categories: CategoryRepository::new(pool.clone()),
@@ -127,6 +159,42 @@ impl AppState {
             builds: BuildRepository::new(pool.clone()),
             auth: auth_repo,
         })
+    }
+
+    /// 调用运行时插件钩子（同步执行所有已注册的 action handler）
+    pub async fn call_hook(&self, hook: &str, ctx: &serde_json::Value) {
+        let guard = self.runtime_plugins.lock().await;
+        if let Some(ref engine) = *guard
+            && let Err(e) = engine.hooks.call_action(&engine.lua, hook, ctx)
+        {
+            tracing::warn!("[plugin] 钩子 {hook} 执行失败: {e}");
+        }
+    }
+
+    /// 重载运行时插件引擎（插件启用/禁用或配置变更后调用）
+    pub async fn reload_runtime_plugins(&self) {
+        let enabled = self.enabled_plugins.read().await.clone();
+        let mut plugin_configs = HashMap::new();
+        for name in &enabled {
+            if let Ok(configs) = PluginStore::get_all(&self.db, name).await
+                && !configs.is_empty()
+            {
+                plugin_configs.insert(name.clone(), configs);
+            }
+        }
+        match PluginEngine::new(&self.project_root, &self.config, plugin_configs) {
+            Ok(mut engine) => {
+                if let Err(e) = engine.load_plugins(&enabled) {
+                    tracing::error!("运行时插件重载失败: {e}");
+                    return;
+                }
+                *self.runtime_plugins.lock().await = Some(engine);
+                tracing::info!("运行时插件引擎已重载");
+            }
+            Err(e) => {
+                tracing::error!("运行时插件引擎重载失败: {e}");
+            }
+        }
     }
 }
 

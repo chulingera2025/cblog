@@ -1,5 +1,5 @@
 plugin.action("after_render", 10, function(ctx)
-    local output = "public"
+    local output = ctx.output_dir or "public"
     local count = 0
 
     local function process_dir(dir)

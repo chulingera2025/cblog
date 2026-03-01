@@ -1,5 +1,5 @@
 plugin.action("after_render", 20, function(ctx)
-    local output = "public"
+    local output = ctx.output_dir or "public"
     local css = [[
 <style>
 html { scroll-behavior: smooth; }

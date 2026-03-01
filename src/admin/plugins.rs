@@ -4,7 +4,7 @@ use minijinja::context;
 use std::collections::HashMap;
 
 use crate::admin::template::render_admin;
-use crate::plugin::registry::{list_available_plugins, load_plugin_info};
+use crate::plugin::registry::{list_available_plugins, load_plugin_info, load_plugin_toml};
 use crate::plugin::store::PluginStore;
 use crate::state::AppState;
 
@@ -181,6 +181,22 @@ pub async fn plugin_detail(
         }
     };
 
+    // 加载 admin pages 声明
+    let admin_pages: Vec<minijinja::Value> = load_plugin_toml(&toml_path)
+        .map(|toml| {
+            toml.admin
+                .pages
+                .iter()
+                .map(|p| {
+                    context! {
+                        label => &p.label,
+                        href => format!("/admin/ext/{}/{}", name, p.slug),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     let is_enabled = state.enabled_plugins.read().await.contains(&name);
 
     let plugin_version = if info.version.is_empty() {
@@ -225,6 +241,7 @@ pub async fn plugin_detail(
         cap_generates => &info.capabilities.generates,
         dep_after => &info.dependencies.after,
         dep_conflicts => &info.dependencies.conflicts,
+        admin_pages => admin_pages,
         config_fields => config_fields,
     };
 

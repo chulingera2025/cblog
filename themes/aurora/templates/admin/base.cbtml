@@ -37,7 +37,20 @@ html [lang="zh-CN"]
           }
       })();
     script
-      function confirmAction(title, message, formEl) {
+      function submitAction(url) {
+          var form = document.createElement('form');
+          form.method = 'POST';
+          form.action = url;
+          var csrfInput = document.createElement('input');
+          csrfInput.type = 'hidden';
+          csrfInput.name = '_csrf_token';
+          var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+          csrfInput.value = match ? match[1] : '';
+          form.appendChild(csrfInput);
+          document.body.appendChild(form);
+          form.submit();
+      }
+      function confirmAction(title, message, formOrUrl) {
           var backdrop = document.createElement('div');
           backdrop.className = 'modal-backdrop';
           backdrop.innerHTML =
@@ -53,7 +66,7 @@ html [lang="zh-CN"]
           document.getElementById('modal-cancel').onclick = function() { backdrop.remove(); };
           document.getElementById('modal-confirm').onclick = function() {
               backdrop.remove();
-              formEl.submit();
+              if (typeof formOrUrl === 'string') { submitAction(formOrUrl); } else { formOrUrl.submit(); }
           };
           backdrop.onclick = function(e) { if (e.target === backdrop) backdrop.remove(); };
       }

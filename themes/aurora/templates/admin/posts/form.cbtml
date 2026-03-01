@@ -39,14 +39,11 @@ slot editor_content
             span#auto-save-status.form-hint [style="display:block;margin-top:8px;text-align:center;font-size:0.85em;"]
             div [style="display:flex;gap:8px;margin-top:8px;"]
               if post_status == "draft"
-                form [method="POST"] [action="/admin/posts/{{ post_id }}/publish"] [style="flex:1;"]
-                  button.btn.btn-success [type="submit"] [style="width:100%;"] 发布
+                button.btn.btn-success [type="button"] [style="width:100%;flex:1;"] [onclick="submitAction('/admin/posts/{{ post_id }}/publish')"] 发布
               else
-                form [method="POST"] [action="/admin/posts/{{ post_id }}/unpublish"] [style="flex:1;"]
-                  button.btn.btn-secondary [type="submit"] [style="width:100%;"] 取消发布
+                button.btn.btn-secondary [type="button"] [style="width:100%;flex:1;"] [onclick="submitAction('/admin/posts/{{ post_id }}/unpublish')"] 取消发布
               end
-              form [method="POST"] [action="/admin/posts/{{ post_id }}/delete"] [style="flex:1;"] [onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;"]
-                button.btn.btn-danger [type="submit"] [style="width:100%;"] 删除
+              button.btn.btn-danger [type="button"] [style="width:100%;flex:1;"] [onclick="confirmAction('删除文章', '确定要删除这篇文章吗？', '/admin/posts/{{ post_id }}/delete')"] 删除
 
         div.card
           div.card-header

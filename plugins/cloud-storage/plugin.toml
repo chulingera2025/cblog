@@ -1,0 +1,18 @@
+[plugin]
+name = "cloud-storage"
+version = "0.1.0"
+description = "云存储支持（S3/OSS/COS 兼容）"
+
+[capabilities]
+reads = ["config.media"]
+writes = ["media"]
+generates = []
+
+[dependencies]
+after = []
+conflicts = []
+
+[[admin.pages]]
+label = "云存储"
+slug = "settings"
+icon = "upload"

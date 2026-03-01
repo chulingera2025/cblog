@@ -172,6 +172,16 @@ pub async fn upload_media(
             url: &url, thumb_url: thumb_url.as_deref(),
         }).await.ok();
 
+        state.call_hook("after_media_upload", &serde_json::json!({
+            "file_path": relative_path,
+            "url": url,
+            "thumb_path": thumb_url.as_deref(),
+            "thumb_url": thumb_url.as_deref(),
+            "original_name": file_name,
+            "mime_type": processed.mime_type,
+            "size": processed.data.len()
+        })).await;
+
         return Redirect::to("/admin/media").into_response();
     }
 
@@ -191,11 +201,16 @@ pub async fn delete_media(
         let media_file = state.project_root.join(upload_dir).join(relative);
         tokio::fs::remove_file(&media_file).await.ok();
 
-        if let Some(thumb) = thumb_url {
-            let thumb_relative = thumb.strip_prefix("/media/").unwrap_or(&thumb);
+        if let Some(ref thumb) = thumb_url {
+            let thumb_relative = thumb.strip_prefix("/media/").unwrap_or(thumb);
             let thumb_media = state.project_root.join(upload_dir).join(thumb_relative);
             tokio::fs::remove_file(&thumb_media).await.ok();
         }
+
+        state.call_hook("after_media_delete", &serde_json::json!({
+            "url": url,
+            "thumb_url": thumb_url
+        })).await;
     }
 
     Redirect::to("/admin/media")
@@ -303,6 +318,16 @@ pub async fn api_upload_media(
             width: processed.width as i64, height: processed.height as i64,
             url: &url, thumb_url: thumb_url.as_deref(),
         }).await;
+
+        state.call_hook("after_media_upload", &serde_json::json!({
+            "file_path": relative_path,
+            "url": url,
+            "thumb_path": thumb_url.as_deref(),
+            "thumb_url": thumb_url.as_deref(),
+            "original_name": file_name,
+            "mime_type": processed.mime_type,
+            "size": processed.data.len()
+        })).await;
 
         return Json(serde_json::json!({
             "url": url,

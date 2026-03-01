@@ -72,6 +72,12 @@ grass = "0.13"
 # Lua 运行时
 mlua = { version = "0.11", features = ["lua54", "serde", "vendored"] }
 
+# HTTP 客户端（Lua 插件网络请求）
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# HMAC 签名（S3 兼容存储签名）
+hmac = "0.12"
+
 # HTTP 中间件
 tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "cors"] }

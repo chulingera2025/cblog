@@ -98,6 +98,8 @@ pub fn render_pages(
             }
         };
 
+        let html = super::postprocess::apply(html, config);
+
         let file_path = if page.url.ends_with('/') {
             output_dir
                 .join(page.url.trim_start_matches('/'))

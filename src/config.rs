@@ -22,6 +22,8 @@ pub struct SiteConfig {
     pub media: MediaConfig,
     #[serde(default)]
     pub plugins: PluginConfig,
+    #[serde(default)]
+    pub features: FeaturesConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,4 +272,71 @@ pub struct PluginConfig {
     #[serde(default)]
     pub enabled: Vec<String>,
 }
+
+#[derive(Debug, Default, Deserialize)]
+pub struct FeaturesConfig {
+    #[serde(default)]
+    pub image_optimize: ImageOptimizeConfig,
+    #[serde(default)]
+    pub syntax_highlight: SyntaxHighlightConfig,
+    #[serde(default)]
+    pub toc: TocConfig,
+    #[serde(default)]
+    pub search: SearchConfig,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImageOptimizeConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for ImageOptimizeConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SyntaxHighlightConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for SyntaxHighlightConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TocConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for TocConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_search_excerpt_length")]
+    pub excerpt_length: usize,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            excerpt_length: default_search_excerpt_length(),
+        }
+    }
+}
+
+fn default_search_excerpt_length() -> usize { 500 }
 

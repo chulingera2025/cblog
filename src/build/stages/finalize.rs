@@ -3,7 +3,7 @@ use crate::content::Post;
 use anyhow::Result;
 use std::path::Path;
 
-/// 构建收尾：生成 sitemap.xml、feed.xml 等
+/// 构建收尾：生成 sitemap.xml、feed.xml、search-index.json 等
 pub fn finalize(project_root: &Path, config: &SiteConfig, posts: &[Post]) -> Result<()> {
     let output_dir = project_root.join(&config.build.output_dir);
 
@@ -13,6 +13,10 @@ pub fn finalize(project_root: &Path, config: &SiteConfig, posts: &[Post]) -> Res
 
     if config.feed.enabled {
         generate_feed(&output_dir, config, posts)?;
+    }
+
+    if config.features.search.enabled {
+        generate_search_index(&output_dir, config, posts)?;
     }
 
     Ok(())
@@ -198,4 +202,30 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+fn generate_search_index(output_dir: &Path, config: &SiteConfig, posts: &[Post]) -> Result<()> {
+    let excerpt_len = config.features.search.excerpt_length;
+
+    let index: Vec<serde_json::Value> = posts
+        .iter()
+        .map(|post| {
+            let plain = crate::content::markdown::strip_html_tags(post.content.html());
+            let content: String = plain.chars().take(excerpt_len).collect();
+
+            serde_json::json!({
+                "id": post.id.to_string(),
+                "title": &post.title,
+                "url": format!("/posts/{}/", post.slug),
+                "content": content,
+                "tags": &post.tags,
+                "date": post.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+
+    let json = serde_json::to_string(&index)?;
+    std::fs::write(output_dir.join("search-index.json"), json)?;
+    tracing::info!("已生成搜索索引：{} 篇文章", posts.len());
+    Ok(())
 }

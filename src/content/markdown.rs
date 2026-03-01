@@ -178,7 +178,7 @@ pub fn extract_toc_from_html(html: &str) -> Option<String> {
 }
 
 /// 去除 HTML 标签，保留纯文本
-fn strip_html_tags(html: &str) -> String {
+pub(crate) fn strip_html_tags(html: &str) -> String {
     let mut result = String::with_capacity(html.len());
     let mut in_tag = false;
     for ch in html.chars() {

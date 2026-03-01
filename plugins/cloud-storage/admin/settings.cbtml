@@ -1,0 +1,63 @@
+div.card
+  div.card-body
+    h2 云存储配置
+    p.text-muted 配置 S3/OSS/COS 兼容的云存储服务，构建时自动上传 media 目录到云端。
+    form [method="POST"] [action="/admin/plugins/cloud-storage/config"]
+      div.form-group
+        label.form-label 启用
+        select.form-input [name="enabled"]
+          if plugin_config.enabled == "true"
+            option [value="false"] 否
+            option [value="true"] [selected] 是
+          else
+            option [value="false"] [selected] 否
+            option [value="true"] 是
+          end
+      div.form-group
+        label.form-label 服务商
+        select.form-input [name="provider"]
+          if plugin_config.provider == "oss"
+            option [value="s3"] Amazon S3
+            option [value="oss"] [selected] 阿里云 OSS
+            option [value="cos"] 腾讯云 COS
+            option [value="custom"] 自定义 S3 兼容
+          else if plugin_config.provider == "cos"
+            option [value="s3"] Amazon S3
+            option [value="oss"] 阿里云 OSS
+            option [value="cos"] [selected] 腾讯云 COS
+            option [value="custom"] 自定义 S3 兼容
+          else if plugin_config.provider == "custom"
+            option [value="s3"] Amazon S3
+            option [value="oss"] 阿里云 OSS
+            option [value="cos"] 腾讯云 COS
+            option [value="custom"] [selected] 自定义 S3 兼容
+          else
+            option [value="s3"] [selected] Amazon S3
+            option [value="oss"] 阿里云 OSS
+            option [value="cos"] 腾讯云 COS
+            option [value="custom"] 自定义 S3 兼容
+          end
+        div.form-hint 选择云存储服务商
+      div.form-group
+        label.form-label Endpoint
+        input.form-input [type="text"] [name="endpoint"] [value="{{ plugin_config.endpoint }}"] [placeholder="https://s3.amazonaws.com"]
+        div.form-hint S3 兼容 API 端点地址
+      div.form-group
+        label.form-label Bucket
+        input.form-input [type="text"] [name="bucket"] [value="{{ plugin_config.bucket }}"] [required]
+        div.form-hint 存储桶名称
+      div.form-group
+        label.form-label Region
+        input.form-input [type="text"] [name="region"] [value="{{ plugin_config.region }}"] [placeholder="us-east-1"]
+        div.form-hint 区域标识
+      div.form-group
+        label.form-label Access Key
+        input.form-input [type="text"] [name="access_key"] [value="{{ plugin_config.access_key }}"]
+      div.form-group
+        label.form-label Secret Key
+        input.form-input [type="password"] [name="secret_key"] [value="{{ plugin_config.secret_key }}"]
+      div.form-group
+        label.form-label URL 前缀
+        input.form-input [type="text"] [name="url_prefix"] [value="{{ plugin_config.url_prefix }}"] [placeholder="https://cdn.example.com/media"]
+        div.form-hint 替换输出 HTML 中的 /media/ 路径为此前缀
+      button.btn.btn-primary [type="submit"] 保存配置

@@ -73,6 +73,9 @@ html [lang="zh-CN"]
                   input.name = '_csrf_token';
                   input.value = token;
                   form.appendChild(input);
+                  form.addEventListener('submit', function() {
+                      input.value = getCsrfToken();
+                  });
               });
           }
           document.addEventListener('DOMContentLoaded', injectCsrfFields);

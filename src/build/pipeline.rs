@@ -282,6 +282,17 @@ fn run_pipeline(
     let config = bctx.config;
 
     // 初始化插件引擎
+    const BUILTIN_FEATURES: &[&str] = &["image-optimize", "syntax-highlight", "toc", "search"];
+    for plugin_name in &config.plugins.enabled {
+        if BUILTIN_FEATURES.contains(&plugin_name.as_str()) {
+            tracing::warn!(
+                "插件 '{plugin_name}' 已内置为核心功能，请从 [plugins] enabled 中移除。\
+                可通过 [features.{section}] enabled = false 禁用。",
+                section = plugin_name.replace('-', "_")
+            );
+        }
+    }
+
     let engine = if !config.plugins.enabled.is_empty() {
         let ordered = crate::plugin::scheduler::resolve_load_order(
             project_root,

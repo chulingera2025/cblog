@@ -465,7 +465,26 @@ cblog.log.debug("调试信息: " .. tostring(data))
 
 ---
 
-## 十二、现有内置插件详解
+## 十二、内置功能与现有插件
+
+### 12.0 内置功能（已从插件转为 Rust 核心功能）
+
+以下 4 个功能已内置到 Rust 构建管道中，不再作为 Lua 插件存在：
+
+| 功能 | 配置段 | 默认 | 说明 |
+|------|--------|------|------|
+| image-optimize | `[features.image_optimize]` | enabled=true | 为 `<img>` 标签自动添加 `loading="lazy"` |
+| syntax-highlight | `[features.syntax_highlight]` | enabled=true | 检测 `code-highlight` 类注入 One Dark CSS |
+| toc | `[features.toc]` | enabled=true | 检测 `toc-list` 类注入平滑滚动 CSS |
+| search | `[features.search]` | enabled=true, excerpt_length=500 | 生成 `search-index.json` 搜索索引 |
+
+禁用示例：
+```toml
+[features.search]
+enabled = false
+```
+
+如果 `[plugins] enabled` 中仍配置了这些插件名，构建时会输出警告提示用户移除。
 
 ### 12.1 hello-world — 示例插件
 
@@ -489,45 +508,7 @@ plugin.action("after_render", 10, function(ctx)
 end)
 ```
 
-### 12.2 search — 搜索索引生成
-
-**plugin.toml：**
-```toml
-[plugin]
-name = "search"
-version = "0.1.0"
-description = "生成搜索索引文件"
-
-[capabilities]
-reads = ["post.title", "post.content", "post.tags"]
-generates = ["public/search-index.json"]
-```
-
-**main.lua 核心逻辑：**
-```lua
-plugin.action("after_finalize", 10, function(ctx)
-    local entries = {}
-    for _, post in ipairs(ctx.posts) do
-        local plain = cblog.strip_html(post.content)
-        if #plain > 500 then
-            plain = plain:sub(1, 500)
-        end
-        table.insert(entries, {
-            id = post.id,
-            title = post.title,
-            url = post.url,
-            content = plain,
-            tags = post.tags,
-            date = post.created_at
-        })
-    end
-    local json = cblog.json(entries)
-    cblog.files.write(ctx.output_dir .. "/search-index.json", json)
-    cblog.log.info("搜索索引已生成，共 " .. #entries .. " 篇文章")
-end)
-```
-
-### 12.3 seo-optimizer — SEO 文件生成
+### 12.2 seo-optimizer — SEO 文件生成
 
 ```lua
 plugin.action("after_finalize", 20, function(ctx)
@@ -536,55 +517,6 @@ plugin.action("after_finalize", 20, function(ctx)
     robots = robots .. "Sitemap: " .. site_url .. "/sitemap.xml\n"
     cblog.files.write(ctx.output_dir .. "/robots.txt", robots)
     cblog.log.info("robots.txt 已生成")
-end)
-```
-
-### 12.4 image-optimize — 图片懒加载
-
-```lua
-plugin.action("after_render", 10, function(ctx)
-    local output = ctx.output_dir or "public"
-    local count = 0
-    -- 遍历 HTML 文件，为 <img> 标签添加 loading="lazy"
-    local items = cblog.files.list(output)
-    for _, name in ipairs(items) do
-        local path = output .. "/" .. name
-        if name:match("%.html$") then
-            local html = cblog.files.read(path)
-            local modified = html:gsub('<img([^>]-)>', function(attrs)
-                if not attrs:match('loading=') then
-                    count = count + 1
-                    return '<img loading="lazy"' .. attrs .. '>'
-                end
-                return '<img' .. attrs .. '>'
-            end)
-            if modified ~= html then
-                cblog.files.write(path, modified)
-            end
-        end
-    end
-    cblog.log.info("图片懒加载：已处理 " .. count .. " 个标签")
-end)
-```
-
-### 12.5 toc — 目录平滑滚动
-
-```lua
-plugin.action("after_render", 20, function(ctx)
-    local output = ctx.output_dir or "public"
-    -- 为包含 toc-list class 的 HTML 注入平滑滚动 CSS
-    local css = '<style>html{scroll-behavior:smooth}.toc-list a{...}</style>'
-    -- 在 </head> 前注入
-end)
-```
-
-### 12.6 syntax-highlight — 代码高亮样式
-
-```lua
-plugin.action("after_render", 15, function(ctx)
-    local output = ctx.output_dir or "public"
-    -- 为包含 code-highlight class 的 HTML 注入 One Dark 主题 CSS
-    -- 在 </head> 前注入
 end)
 ```
 

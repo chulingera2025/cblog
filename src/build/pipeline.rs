@@ -305,10 +305,8 @@ fn run_pipeline(
         None
     };
 
-    let output_dir_str = project_root
-        .join(&config.build.output_dir)
-        .to_string_lossy()
-        .to_string();
+    // Lua sandbox 只允许相对路径，传给插件的 output_dir 使用配置中的相对路径
+    let output_dir_str = config.build.output_dir.clone();
 
     // 阶段 1: content.load
     let posts = stages::load::load_posts_from_db(db_posts, config);

@@ -23,7 +23,7 @@ impl PluginEngine {
         config: &SiteConfig,
         plugin_configs: std::collections::HashMap<String, std::collections::HashMap<String, serde_json::Value>>,
     ) -> Result<Self> {
-        let lua = Lua::new_with(StdLib::ALL, LuaOptions::default())
+        let lua = Lua::new_with(StdLib::ALL_SAFE, LuaOptions::default())
             .map_err(|e| anyhow::anyhow!("Lua VM 初始化失败: {e}"))?;
 
         sandbox::apply(&lua, project_root)?;

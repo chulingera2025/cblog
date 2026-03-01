@@ -241,6 +241,9 @@ pub async fn save_plugin_config(
     Form(form): Form<HashMap<String, String>>,
 ) -> Redirect {
     for (key, value) in &form {
+        if key == "_csrf_token" {
+            continue;
+        }
         let json_value = serde_json::Value::String(value.clone());
         let _ = PluginStore::set(&state.db, &name, key, &json_value).await;
     }

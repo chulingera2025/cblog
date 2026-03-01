@@ -98,7 +98,24 @@ impl PluginEngine {
         cblog
             .set(
                 "iso_date",
-                lua.create_function(|_, date_str: String| Ok(date_str))
+                lua.create_function(|_, date_str: String| {
+                    use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime};
+
+                    // RFC 3339 (如 "2024-01-15T10:30:00+08:00")
+                    if let Ok(dt) = DateTime::<FixedOffset>::parse_from_rfc3339(&date_str) {
+                        return Ok(dt.to_rfc3339());
+                    }
+                    // "YYYY-MM-DD HH:MM:SS"
+                    if let Ok(ndt) = NaiveDateTime::parse_from_str(&date_str, "%Y-%m-%d %H:%M:%S") {
+                        return Ok(ndt.format("%Y-%m-%dT%H:%M:%S").to_string());
+                    }
+                    // "YYYY-MM-DD"
+                    if let Ok(nd) = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+                        return Ok(nd.format("%Y-%m-%dT00:00:00").to_string());
+                    }
+                    // 解析失败返回原字符串
+                    Ok(date_str)
+                })
                     .map_err(|e| anyhow::anyhow!("{e}"))?,
             )
             .map_err(|e| anyhow::anyhow!("{e}"))?;

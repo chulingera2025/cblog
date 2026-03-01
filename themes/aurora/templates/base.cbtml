@@ -2,7 +2,11 @@ html [lang="{{ site.language }}"] [data-theme="{{ config.dark_mode | default('au
   head
     meta [charset="utf-8"]
     meta [name="viewport"] [content="width=device-width, initial-scale=1"]
-    title {{ page.title }} - {{ site.title }}
+    if page.title and page.title != site.title
+      title {{ page.title }} - {{ site.title }}
+    else
+      title {{ site.title }}
+    end
     meta [name="description"] [content="{{ page.description | default(site.description) }}"]
     link [rel="canonical"] [href="{{ site.url }}{{ page.url }}"]
     link [rel="stylesheet"] [href="/assets/main.css"]

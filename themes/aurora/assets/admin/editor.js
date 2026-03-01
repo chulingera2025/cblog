@@ -483,13 +483,12 @@ if (coverInput && coverPreview && coverPreviewImg) {
     });
 }
 
-// ── 自动保存草稿（仅新建文章时启用）──
+// ── 自动保存 ──
 
 const postForm = document.getElementById('post-form');
-const isNewPost = postForm && postForm.getAttribute('action') === '/admin/posts';
 
-if (isNewPost && editor) {
-    let draftId = null;
+if (postForm && editor) {
+    const postId = postForm.getAttribute('action')?.split('/').pop();
     let saveTimer = null;
     let isSaving = false;
     const saveStatusEl = document.getElementById('auto-save-status');
@@ -501,7 +500,7 @@ if (isNewPost && editor) {
     }
 
     async function doAutosave() {
-        if (isSaving) return;
+        if (isSaving || !postId) return;
         const title = document.querySelector('input[name="title"]')?.value || '';
         const content = document.getElementById('content-input')?.value || '';
         if (!title && !content) return;
@@ -519,32 +518,15 @@ if (isNewPost && editor) {
                 slug: document.querySelector('input[name="slug"]')?.value || '',
             };
 
-            let resp;
-            if (!draftId) {
-                resp = await fetch('/admin/posts/autosave', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    draftId = data.id;
-                    if (postForm) postForm.setAttribute('action', '/admin/posts/' + draftId);
-                    setStatus('草稿已保存');
-                } else {
-                    setStatus('保存失败', true);
-                }
+            const resp = await fetch('/admin/posts/' + postId + '/autosave', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (resp.ok) {
+                setStatus('已自动保存 ' + new Date().toLocaleTimeString());
             } else {
-                resp = await fetch('/admin/posts/' + draftId + '/autosave', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                if (resp.ok) {
-                    setStatus('草稿已保存 ' + new Date().toLocaleTimeString());
-                } else {
-                    setStatus('保存失败', true);
-                }
+                setStatus('保存失败', true);
             }
         } catch {
             setStatus('网络错误，保存失败', true);

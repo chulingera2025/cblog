@@ -73,6 +73,7 @@ pub struct PluginInfo {
     pub name: String,
     pub version: String,
     pub description: String,
+    pub min_cblog: Option<String>,
     pub capabilities: PluginCapabilities,
     pub dependencies: PluginDependencies,
 }
@@ -93,6 +94,7 @@ pub fn load_plugin_info(path: &Path) -> Result<PluginInfo> {
         name: toml.plugin.name,
         version: toml.plugin.version,
         description: toml.plugin.description,
+        min_cblog: toml.plugin.min_cblog,
         capabilities: toml.capabilities,
         dependencies: toml.dependencies,
     })
@@ -117,4 +119,27 @@ pub fn list_available_plugins(project_root: &Path) -> Result<Vec<String>> {
     }
     names.sort();
     Ok(names)
+}
+
+/// 语义版本比较：v1 < v2 返回 true
+pub fn version_lt(v1: &str, v2: &str) -> bool {
+    let parse = |v: &str| -> Vec<u64> {
+        v.split('.')
+            .map(|s| s.parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let a = parse(v1);
+    let b = parse(v2);
+    let len = a.len().max(b.len());
+    for i in 0..len {
+        let sa = a.get(i).copied().unwrap_or(0);
+        let sb = b.get(i).copied().unwrap_or(0);
+        if sa < sb {
+            return true;
+        }
+        if sa > sb {
+            return false;
+        }
+    }
+    false
 }

@@ -205,25 +205,7 @@ impl PluginEngine {
             .set(
                 "version_lt",
                 lua.create_function(|_, (v1, v2): (String, String)| {
-                    let parse = |v: &str| -> Vec<u64> {
-                        v.split('.')
-                            .map(|s| s.parse::<u64>().unwrap_or(0))
-                            .collect()
-                    };
-                    let a = parse(&v1);
-                    let b = parse(&v2);
-                    let len = a.len().max(b.len());
-                    for i in 0..len {
-                        let sa = a.get(i).copied().unwrap_or(0);
-                        let sb = b.get(i).copied().unwrap_or(0);
-                        if sa < sb {
-                            return Ok(true);
-                        }
-                        if sa > sb {
-                            return Ok(false);
-                        }
-                    }
-                    Ok(false)
+                    Ok(crate::plugin::registry::version_lt(&v1, &v2))
                 })
                 .map_err(|e| anyhow::anyhow!("{e}"))?,
             )
@@ -441,6 +423,19 @@ impl PluginEngine {
 
             let info = crate::plugin::registry::load_plugin_info(&toml_path)
                 .with_context(|| format!("加载插件 {} 元数据失败", name))?;
+
+            // min_cblog 版本校验
+            if let Some(ref min_ver) = info.min_cblog {
+                let current_ver = env!("CARGO_PKG_VERSION");
+                if crate::plugin::registry::version_lt(current_ver, min_ver) {
+                    anyhow::bail!(
+                        "插件 {} 要求 cblog >= {}，当前版本 {}",
+                        name,
+                        min_ver,
+                        current_ver
+                    );
+                }
+            }
 
             // 设置 require 搜索路径
             let lib_dir = plugin_dir.join("lib");

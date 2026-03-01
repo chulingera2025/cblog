@@ -89,6 +89,15 @@ slot content
             span.form-hint 无
           end
 
+    if admin_pages
+      div.card [style="margin-bottom:16px;"]
+        div.card-header
+          span.card-title 管理页面
+        div.card-body
+          for page in admin_pages
+            a.btn.btn-primary [href="{{ page.href }}"] [style="margin-right:8px;margin-bottom:8px;"] {{ page.label }}
+          end
+
     div.card
       div.card-header
         span.card-title 插件配置
@@ -102,6 +111,10 @@ slot content
               end
             button.btn.btn-primary [type="submit"] 保存配置
         else
-          p.form-hint 此插件暂无配置数据。
+          if admin_pages
+            p.form-hint 此插件通过管理页面进行配置。
+          else
+            p.form-hint 此插件暂无配置数据。
+          end
         end
   end

@@ -7,6 +7,7 @@ import { Placeholder, CharacterCount } from 'https://esm.sh/@tiptap/extensions@3
 import { TaskList, TaskItem } from 'https://esm.sh/@tiptap/extension-list@3'
 import Subscript from 'https://esm.sh/@tiptap/extension-subscript@3'
 import Superscript from 'https://esm.sh/@tiptap/extension-superscript@3'
+import { Markdown } from 'https://esm.sh/@tiptap/markdown@3'
 
 const editorElement = document.getElementById('editor');
 const contentDataEl = document.getElementById('editor-content-data');
@@ -43,6 +44,9 @@ try {
             Subscript,
             Superscript,
             CharacterCount,
+            Markdown.configure({
+                transformPastedText: true,
+            }),
         ],
         content: initialContent,
         onUpdate({ editor }) {

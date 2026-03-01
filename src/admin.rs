@@ -56,9 +56,8 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/profile", get(profile::profile_page))
         .route("/admin/profile/password", post(auth::change_password))
         // 文章管理
-        .route("/admin/posts", get(posts::list_posts).post(posts::create_post))
+        .route("/admin/posts", get(posts::list_posts))
         .route("/admin/posts/new", get(posts::new_post_page))
-        .route("/admin/posts/autosave", post(posts::autosave_create))
         .route("/admin/posts/{id}", get(posts::edit_post_page).post(posts::update_post))
         .route("/admin/posts/{id}/delete", post(posts::delete_post))
         .route("/admin/posts/{id}/publish", post(posts::publish_post))

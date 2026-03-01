@@ -4,139 +4,80 @@ slot editor_content
   a.page-back [href="/admin/posts"]
     raw svg_icon("arrow-left")
     span  返回文章列表
-  if is_edit
-    form [method="POST"] [action="/admin/posts/{{ post_id }}"] [id="post-form"]
-      input [type="hidden"] [name="content"] [id="content-input"]
-      input [type="hidden"] [name="tags"] [id="tags-input"] [value="{{ post_tags }}"]
-      input [type="hidden"] [name="category"] [id="category-input"] [value="{{ post_category }}"]
+  form [method="POST"] [action="/admin/posts/{{ post_id }}"] [id="post-form"]
+    input [type="hidden"] [name="content"] [id="content-input"]
+    input [type="hidden"] [name="tags"] [id="tags-input"] [value="{{ post_tags }}"]
+    input [type="hidden"] [name="category"] [id="category-input"] [value="{{ post_category }}"]
 
-      div.editor-layout
-        div.editor-main
-          input.editor-title-input [type="text"] [name="title"] [placeholder="输入文章标题..."] [value="{{ post_title }}"] [required]
-          div.editor-wrap
-            include partials/editor-toolbar
-            div#editor.editor-content
-              div.editor-loading 编辑器加载中...
+    div.editor-layout
+      div.editor-main
+        input.editor-title-input [type="text"] [name="title"] [placeholder="输入文章标题..."] [value="{{ post_title }}"] [required]
+        div.editor-wrap
+          include partials/editor-toolbar
+          div#editor.editor-content
+            div.editor-loading 编辑器加载中...
 
-        div.editor-sidebar
-          div.card
-            div.card-header
-              span.card-title 发布
-            div.card-body
-              div.form-group
-                label.form-label 状态
-                select.form-select [name="status"]
-                  if post_status == "draft"
-                    option [value="draft"] [selected] 草稿
-                    option [value="published"] 已发布
-                  else
-                    option [value="draft"] 草稿
-                    option [value="published"] [selected] 已发布
-                  end
-              div.form-group
-                label.form-label Slug
-                input.form-input [type="text"] [name="slug"] [value="{{ post_slug }}"]
-              button.btn.btn-primary [type="submit"] [style="width:100%;"] 保存修改
-              div [style="display:flex;gap:8px;margin-top:8px;"]
+      div.editor-sidebar
+        div.card
+          div.card-header
+            span.card-title 发布
+          div.card-body
+            div.form-group
+              label.form-label 状态
+              select.form-select [name="status"]
                 if post_status == "draft"
-                  form [method="POST"] [action="/admin/posts/{{ post_id }}/publish"] [style="flex:1;"]
-                    button.btn.btn-success [type="submit"] [style="width:100%;"] 发布
-                else
-                  form [method="POST"] [action="/admin/posts/{{ post_id }}/unpublish"] [style="flex:1;"]
-                    button.btn.btn-secondary [type="submit"] [style="width:100%;"] 取消发布
-                end
-                form [method="POST"] [action="/admin/posts/{{ post_id }}/delete"] [style="flex:1;"] [onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;"]
-                  button.btn.btn-danger [type="submit"] [style="width:100%;"] 删除
-
-          div.card
-            div.card-header
-              span.card-title 分类
-            div.card-body
-              select#category-select.form-select
-                option [value=""] 无分类
-
-          div.card
-            div.card-header
-              span.card-title 标签
-            div.card-body
-              div.tag-input-container#tag-container
-                input [type="text"] [id="tag-input-field"] [placeholder="输入标签回车添加..."]
-
-          div.card
-            div.card-header
-              span.card-title 封面图
-            div.card-body
-              input.form-input [type="text"] [name="cover_image"] [id="cover-input"] [value="{{ post_cover_image }}"] [placeholder="图片 URL"]
-              if post_cover_image
-                div.cover-preview#cover-preview
-                  img#cover-preview-img [src="{{ post_cover_image }}"] [alt="封面预览"]
-              else
-                div.cover-preview#cover-preview [style="display:none;"]
-                  img#cover-preview-img [src=""] [alt="封面预览"]
-              end
-              button.btn.btn-secondary.btn-sm [type="button"] [style="margin-top:8px;"] [onclick="openMediaPicker(null, 'cover')"] 从媒体库选择
-
-          div.card
-            div.card-header
-              span.card-title 摘要
-            div.card-body
-              textarea.form-textarea [name="excerpt"] [rows="3"] [placeholder="文章摘要..."] {{ post_excerpt }}
-  else
-    form [method="POST"] [action="/admin/posts"] [id="post-form"]
-      input [type="hidden"] [name="content"] [id="content-input"]
-      input [type="hidden"] [name="tags"] [id="tags-input"]
-      input [type="hidden"] [name="category"] [id="category-input"]
-
-      div.editor-layout
-        div.editor-main
-          input.editor-title-input [type="text"] [name="title"] [placeholder="输入文章标题..."] [required]
-          div.editor-wrap
-            include partials/editor-toolbar
-            div#editor.editor-content
-              div.editor-loading 编辑器加载中...
-
-        div.editor-sidebar
-          div.card
-            div.card-header
-              span.card-title 发布
-            div.card-body
-              div.form-group
-                label.form-label 状态
-                select.form-select [name="status"]
-                  option [value="draft"] 草稿
+                  option [value="draft"] [selected] 草稿
                   option [value="published"] 已发布
-              div.form-group
-                label.form-label Slug（留空自动生成）
-                input.form-input [type="text"] [name="slug"]
-              button.btn.btn-primary [type="submit"] [style="width:100%;"] 创建文章
-              span#auto-save-status.form-hint [style="display:block;margin-top:8px;text-align:center;font-size:0.85em;"]
+                else
+                  option [value="draft"] 草稿
+                  option [value="published"] [selected] 已发布
+                end
+            div.form-group
+              label.form-label Slug
+              input.form-input [type="text"] [name="slug"] [value="{{ post_slug }}"]
+            button.btn.btn-primary [type="submit"] [style="width:100%;"] 保存修改
+            span#auto-save-status.form-hint [style="display:block;margin-top:8px;text-align:center;font-size:0.85em;"]
+            div [style="display:flex;gap:8px;margin-top:8px;"]
+              if post_status == "draft"
+                form [method="POST"] [action="/admin/posts/{{ post_id }}/publish"] [style="flex:1;"]
+                  button.btn.btn-success [type="submit"] [style="width:100%;"] 发布
+              else
+                form [method="POST"] [action="/admin/posts/{{ post_id }}/unpublish"] [style="flex:1;"]
+                  button.btn.btn-secondary [type="submit"] [style="width:100%;"] 取消发布
+              end
+              form [method="POST"] [action="/admin/posts/{{ post_id }}/delete"] [style="flex:1;"] [onsubmit="confirmAction('删除文章', '确定要删除这篇文章吗？', this); return false;"]
+                button.btn.btn-danger [type="submit"] [style="width:100%;"] 删除
 
-          div.card
-            div.card-header
-              span.card-title 分类
-            div.card-body
-              select#category-select.form-select
-                option [value=""] 无分类
+        div.card
+          div.card-header
+            span.card-title 分类
+          div.card-body
+            select#category-select.form-select
+              option [value=""] 无分类
 
-          div.card
-            div.card-header
-              span.card-title 标签
-            div.card-body
-              div.tag-input-container#tag-container
-                input [type="text"] [id="tag-input-field"] [placeholder="输入标签回车添加..."]
+        div.card
+          div.card-header
+            span.card-title 标签
+          div.card-body
+            div.tag-input-container#tag-container
+              input [type="text"] [id="tag-input-field"] [placeholder="输入标签回车添加..."]
 
-          div.card
-            div.card-header
-              span.card-title 封面图
-            div.card-body
-              input.form-input [type="text"] [name="cover_image"] [id="cover-input"] [placeholder="图片 URL"]
+        div.card
+          div.card-header
+            span.card-title 封面图
+          div.card-body
+            input.form-input [type="text"] [name="cover_image"] [id="cover-input"] [value="{{ post_cover_image }}"] [placeholder="图片 URL"]
+            if post_cover_image
+              div.cover-preview#cover-preview
+                img#cover-preview-img [src="{{ post_cover_image }}"] [alt="封面预览"]
+            else
               div.cover-preview#cover-preview [style="display:none;"]
                 img#cover-preview-img [src=""] [alt="封面预览"]
-              button.btn.btn-secondary.btn-sm [type="button"] [style="margin-top:8px;"] [onclick="openMediaPicker(null, 'cover')"] 从媒体库选择
+            end
+            button.btn.btn-secondary.btn-sm [type="button"] [style="margin-top:8px;"] [onclick="openMediaPicker(null, 'cover')"] 从媒体库选择
 
-          div.card
-            div.card-header
-              span.card-title 摘要
-            div.card-body
-              textarea.form-textarea [name="excerpt"] [rows="3"] [placeholder="文章摘要..."]
-  end
+        div.card
+          div.card-header
+            span.card-title 摘要
+          div.card-body
+            textarea.form-textarea [name="excerpt"] [rows="3"] [placeholder="文章摘要..."] {{ post_excerpt }}

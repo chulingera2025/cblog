@@ -161,31 +161,6 @@ impl PostRepository {
         Ok(())
     }
 
-    /// 自动保存创建（草稿状态）
-    pub async fn autosave_create(&self, p: &PostAutosaveParams<'_>) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        let mut tx = self.db.begin().await?;
-
-        sqlx::query(
-            "INSERT INTO posts (id, slug, title, content, status, created_at, updated_at, meta) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)",
-        )
-        .bind(p.id)
-        .bind(p.slug)
-        .bind(p.title)
-        .bind(p.content)
-        .bind(&now)
-        .bind(&now)
-        .bind(p.meta)
-        .execute(&mut *tx)
-        .await?;
-
-        sync_post_taxonomy(&mut tx, p.id, p.tags_str, p.category_str).await;
-
-        tx.commit().await?;
-        Ok(())
-    }
-
     /// 自动保存更新（不改变 status）
     pub async fn autosave_update(&self, p: &PostAutosaveParams<'_>) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();

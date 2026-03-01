@@ -108,64 +108,20 @@ pub async fn list_posts(
     Html(html)
 }
 
-pub async fn new_post_page(State(state): State<AppState>) -> Html<String> {
-    let sidebar_groups = layout::sidebar_groups_value("/admin/posts");
-    let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, "/admin/posts");
-
-    let ctx = context! {
-        page_title => "新建文章",
-        site_title => &state.config.site.title,
-        sidebar_groups => sidebar_groups,
-        plugin_sidebar_items => plugin_items,
-        profile_active => false,
-        wide_content => true,
-        is_edit => false,
-        editor_initial_content => "",
-    };
-
-    let html = render_admin(&state.admin_env, "posts/form.cbtml", ctx)
-        .unwrap_or_else(|e| format!("模板渲染失败: {e}"));
-
-    Html(html)
-}
-
-pub async fn create_post(
-    State(state): State<AppState>,
-    Form(form): Form<PostForm>,
-) -> Redirect {
+pub async fn new_post_page(State(state): State<AppState>) -> Response {
     let id = ulid::Ulid::new().to_string();
-    let slug = match form.slug.as_deref() {
-        Some(s) if !s.trim().is_empty() => s.trim().to_string(),
-        _ => generate_slug(&form.title),
-    };
-    let status = form.status.as_deref().unwrap_or("draft");
-
-    let meta = serde_json::json!({
-        "tags": form.tags.as_deref().unwrap_or(""),
-        "category": form.category.as_deref().unwrap_or(""),
-        "cover_image": form.cover_image.as_deref().unwrap_or(""),
-        "excerpt": form.excerpt.as_deref().unwrap_or(""),
-    })
-    .to_string();
+    let slug = format!("draft-{}", &id[..8].to_lowercase());
 
     if let Err(e) = state.posts.create(&PostWriteParams {
-        id: &id, slug: &slug, title: &form.title, content: &form.content,
-        status, meta: &meta,
-        tags_str: form.tags.as_deref().unwrap_or(""),
-        category_str: form.category.as_deref().unwrap_or(""),
+        id: &id, slug: &slug, title: "", content: "",
+        status: "draft", meta: "{}",
+        tags_str: "", category_str: "",
     }).await {
-        tracing::error!("创建文章失败：{e}");
-        return Redirect::to("/admin/posts");
+        tracing::error!("创建草稿失败：{e}");
+        return Redirect::to("/admin/posts").into_response();
     }
 
-    if status == "published" {
-        let state_clone = state.clone();
-        tokio::spawn(async move {
-            crate::admin::build::spawn_build(&state_clone, "auto:create_post").await;
-        });
-    }
-
-    Redirect::to(&format!("/admin/posts/{id}"))
+    Redirect::to(&format!("/admin/posts/{id}")).into_response()
 }
 
 pub async fn edit_post_page(
@@ -305,38 +261,6 @@ pub struct AutosaveBody {
     pub category: Option<String>,
     pub cover_image: Option<String>,
     pub excerpt: Option<String>,
-}
-
-pub async fn autosave_create(
-    State(state): State<AppState>,
-    Json(body): Json<AutosaveBody>,
-) -> Response {
-    let id = ulid::Ulid::new().to_string();
-    let slug = match body.slug.as_deref() {
-        Some(s) if !s.trim().is_empty() => s.trim().to_string(),
-        _ => generate_slug(&body.title),
-    };
-
-    let meta = serde_json::json!({
-        "tags": body.tags.as_deref().unwrap_or(""),
-        "category": body.category.as_deref().unwrap_or(""),
-        "cover_image": body.cover_image.as_deref().unwrap_or(""),
-        "excerpt": body.excerpt.as_deref().unwrap_or(""),
-    })
-    .to_string();
-
-    match state.posts.autosave_create(&PostAutosaveParams {
-        id: &id, slug: &slug, title: &body.title, content: &body.content, meta: &meta,
-        tags_str: body.tags.as_deref().unwrap_or(""),
-        category_str: body.category.as_deref().unwrap_or(""),
-    }).await {
-        Ok(()) => Json(serde_json::json!({ "id": id })).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
-    }
 }
 
 pub async fn autosave_update(

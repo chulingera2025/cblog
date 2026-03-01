@@ -10,7 +10,8 @@ cblog 的插件系统基于 **Lua 5.4 脚本引擎**（通过 `mlua` crate 嵌�
 
 **核心设计理念：**
 - 插件通过 Lua 脚本编写，热加载无需重新编译 Rust 代码
-- 插件在构建流水线的各阶段通过 hook 介入
+- 插件在构建流水线的各阶段通过 hook 介入（构建期钩子）
+- 插件在 Web 服务运行时响应 admin 操作事件（运行时钩子）
 - 运行在沙箱化的 Lua VM 中（`StdLib::ALL_SAFE` + 路径限制 + 危险 API 移除）
 - 插件配置通过数据库 KV 存储持久化
 - 后台管理面板提供插件的启用/禁用/配置界面
@@ -33,7 +34,7 @@ cblog 的插件系统基于 **Lua 5.4 脚本引擎**（通过 `mlua` crate 嵌�
 | `src/admin.rs` | 路由注册（含插件自定义后台页面路由） |
 | `src/build/pipeline.rs` | 构建流水线（插件引擎初始化和 hook 调用点） |
 | `src/config.rs` | 站点配置（PluginConfig 结构体） |
-| `src/state.rs` | 应用状态（plugin_admin_pages 收集、enabled_plugins 动态状态） |
+| `src/state.rs` | 应用状态（plugin_admin_pages 收集、enabled_plugins 动态状态、运行时插件引擎） |
 | `src/check.rs` | 项目完整性检查（含插件检查逻辑） |
 
 ---
@@ -128,7 +129,7 @@ enabled = ["seo-optimizer", "cloud-storage"]
 
 也可在后台管理面板通过 `/admin/plugins` 页面启用/禁用。
 
-**运行时状态**：启用列表在 `AppState.enabled_plugins`（`Arc<tokio::sync::RwLock<Vec<String>>>`）中维护。后台切换时同时写入 `cblog.toml` 文件并更新内存状态，确保 UI 实时反映变更。
+**运行时状态**：启用列表在 `AppState.enabled_plugins`（`Arc<tokio::sync::RwLock<Vec<String>>>`）中维护。后台切换时同时写入 `cblog.toml` 文件并更新内存状态，确保 UI 实时反映变更。切换后还会触发运行时插件引擎重载。
 
 ---
 
@@ -155,13 +156,23 @@ enabled = ["seo-optimizer", "cloud-storage"]
    → collect_pending_hooks() 收集注册的 hook 到 Rust HookRegistry
 ```
 
-### 5.2 构建时配置加载
+### 5.2 运行时引擎初始化
+
+**serve 模式**：`AppState::new()` 在服务启动时创建运行时插件引擎：
+1. 从 DB 加载所有启用插件的配置（`PluginStore::get_all`）
+2. 创建 `PluginEngine::new(project_root, config, plugin_configs)`
+3. 调用 `engine.load_plugins(&enabled_plugins)`
+4. 包装进 `Arc<Mutex<Some(engine)>>`
+
+运行时引擎与构建期引擎独立——构建期每次 build 创建新引擎，运行时引擎在服务启动时创建一次，仅在插件变更时重载。
+
+### 5.3 构建时配置加载
 
 **serve 模式**：`spawn_build()` 每次触发构建前会**从磁盘重新加载** `SiteConfig`（确保使用最新的插件启用状态），然后异步预取每个启用插件的数据库配置。加载失败时回退到内存中的缓存配置。
 
 **CLI 模式**：`load_all_configs_sync()` 同步加载所有启用插件的配置。
 
-### 5.3 依赖解析
+### 5.4 依赖解析
 
 `resolve_load_order()`（`src/plugin/scheduler.rs`）：
 1. 只保留 `after` 中同样在 enabled 列表中的插件
@@ -221,6 +232,72 @@ end)
 | `after_finalize` | 构建最终阶段完成后 | `{ project_root, output_dir, posts, site_url }` |
 
 **重要**：当前构建管道中所有 hook 均以 **action** 类型调用（`call_action`）。`output_dir` 传入的是**相对路径**（如 `"public"`），因为 Lua 沙箱禁止绝对路径。
+
+### 6.5 运行时钩子（Web 服务期间）
+
+除了构建期钩子外，插件还可以注册运行时钩子，在 Web 服务运行期间响应后台管理操作。运行时钩子在操作完成后同步触发（post-hook），阻塞当前请求直到钩子执行完毕。
+
+**运行时插件引擎**：
+
+AppState 中维护一个独立的运行时插件引擎 `runtime_plugins: Arc<tokio::sync::Mutex<Option<PluginEngine>>>`，在服务启动时初始化，与构建期引擎独立运行。通过 `state.call_hook(hook, ctx)` 调用，`state.reload_runtime_plugins()` 重载。
+
+**运行时钩子调用点：**
+
+| 钩子名 | 调用文件 | 触发时机 | 上下文字段 |
+|--------|---------|---------|-----------|
+| `after_media_upload` | `src/admin/media.rs` | 文件保存 + DB 写入后 | `file_path`, `url`, `thumb_path`, `thumb_url`, `original_name`, `mime_type`, `size` |
+| `after_media_delete` | `src/admin/media.rs` | 文件删除 + DB 删除后 | `url`, `thumb_url` |
+| `after_post_create` | `src/admin/posts.rs` | 创建草稿后 | `id`, `slug` |
+| `after_post_update` | `src/admin/posts.rs` | 更新文章后 | `id`, `slug`, `title`, `status` |
+| `after_post_delete` | `src/admin/posts.rs` | 删除文章后 | `id` |
+| `after_post_publish` | `src/admin/posts.rs` | 发布文章后 | `id` |
+| `after_post_unpublish` | `src/admin/posts.rs` | 取消发布后 | `id` |
+| `after_page_create` | `src/admin/pages.rs` | 创建页面后 | `id`, `slug`, `title`, `status` |
+| `after_page_update` | `src/admin/pages.rs` | 更新页面后 | `id`, `slug`, `title`, `status` |
+| `after_page_delete` | `src/admin/pages.rs` | 删除页面后 | `id` |
+| `after_category_create` | `src/admin/categories.rs` | 创建分类后 | `id`, `name`, `slug` |
+| `after_category_update` | `src/admin/categories.rs` | 更新分类后 | `id`, `name`, `slug` |
+| `after_category_delete` | `src/admin/categories.rs` | 删除分类后 | `id` |
+| `after_tag_create` | `src/admin/tags.rs` | 创建标签后 | `id`, `name`, `slug` |
+| `after_tag_update` | `src/admin/tags.rs` | 更新标签后 | `id`, `name`, `slug` |
+| `after_tag_delete` | `src/admin/tags.rs` | 删除标签后 | `id` |
+| `after_settings_save` | `src/admin/settings.rs` | 站点设置保存后 | `site_title`, `site_url` |
+| `after_plugin_toggle` | `src/admin/plugins.rs` | 插件启用/禁用后 | `plugin_name`, `enabled` |
+| `after_plugin_config_save` | `src/admin/plugins.rs` | 插件配置保存后 | `plugin_name` |
+| `after_theme_save` | `src/admin/theme.rs` | 主题设置保存后 | `theme_name` |
+| `after_theme_switch` | `src/admin/theme.rs` | 切换主题后 | `theme_name` |
+
+**引擎重载**：
+
+在以下事件后会自动重载运行时插件引擎（`state.reload_runtime_plugins()`）：
+- `toggle_plugin` — 插件列表变更
+- `save_plugin_config` — 插件配置变更，`plugin.config()` 需刷新
+
+重载流程：钩子先用旧引擎触发（已注册的插件能收到通知），然后重建新引擎替换旧引擎。
+
+**运行时钩子使用示例：**
+
+```lua
+-- 媒体上传后同步到 S3
+plugin.action("after_media_upload", 50, function(ctx)
+    local cfg = plugin.config()
+    if not cfg or cfg.enabled ~= "true" then return end
+
+    local url = string.format("%s/%s/%s", cfg.endpoint, cfg.bucket, ctx.file_path)
+    local headers = cblog.s3.sign_headers("PUT", url, cfg.region or "us-east-1",
+        cfg.access_key, cfg.secret_key, nil, "UNSIGNED-PAYLOAD")
+    local resp = cblog.http.put_file(url, ctx.file_path, { headers = headers })
+
+    if resp.status >= 200 and resp.status < 300 then
+        cblog.log.info("上传成功: " .. ctx.file_path)
+    end
+end)
+
+-- 文章发布后发送通知
+plugin.action("after_post_publish", 10, function(ctx)
+    cblog.log.info("文章已发布: " .. ctx.id)
+end)
+```
 
 ### 6.5 Hook 上下文数据详情
 
@@ -651,7 +728,9 @@ end)
 
 ### 12.3 cloud-storage — 云存储同步
 
-S3/OSS/COS 兼容的云存储插件，构建后自动将 media 目录上传到远程存储。
+S3 兼容的云存储插件，支持两种工作模式：
+- **运行时模式**：媒体上传/删除时通过运行时钩子实时同步到 S3
+- **构建时模式**：构建完成后替换 HTML 中的 media URL 前缀为 CDN 地址
 
 **plugin.toml：**
 ```toml
@@ -677,21 +756,22 @@ icon = "upload"
 
 **核心逻辑（main.lua）：**
 
-在 `after_finalize` hook（优先级 50）中执行：
-1. 读取插件配置（`plugin.config()`），检查 `enabled == "true"`
-2. 校验必填配置：`endpoint`、`bucket`、`access_key`、`secret_key`
-3. 递归扫描 `media/` 目录所有文件
-4. 对每个文件：
-   - 根据扩展名推断 `Content-Type`
-   - 使用 `cblog.s3.sign_headers()` 生成 AWS V4 签名
-   - 使用 `cblog.http.put_file()` 上传到 `{endpoint}/{bucket}/media/{rel_path}`
-5. 如果配置了 `url_prefix`（CDN 前缀），扫描输出目录所有 HTML 文件，将 `/media/` 替换为 `{url_prefix}/`
+运行时钩子：
+1. `after_media_upload`（优先级 50）：媒体上传后实时同步到 S3
+   - 读取 `plugin.config()`，检查 `enabled == "true"` 和配置完整性
+   - 使用 `cblog.s3.sign_headers()` + `cblog.http.put_file()` 上传主文件
+   - 如果有缩略图（`ctx.thumb_path` 非空）也一并上传
+2. `after_media_delete`（优先级 50）：媒体删除后从 S3 删除
+   - 从 `ctx.url` 提取对象路径（去除开头 `/`）
+   - 使用 `cblog.s3.sign_headers()` + `cblog.http.delete()` 删除
+
+构建时钩子：
+3. `after_finalize`（优先级 50）：如果配置了 `url_prefix`，替换输出 HTML 中的 `/media/` 为 CDN 前缀
 
 **自定义管理页面（admin/settings.cbtml）：**
 
-提供可视化配置表单，字段包括：
+提供配置表单，字段包括：
 - `enabled`：启用开关（select 选择框）
-- `provider`：服务商（s3/oss/cos/custom）
 - `endpoint`：S3 兼容 endpoint URL
 - `bucket`：存储桶名
 - `region`：区域
@@ -1032,7 +1112,8 @@ end
    - 需要修改生成的 HTML → `after_render`
    - 需要生成额外文件 → `after_finalize`
    - 需要处理资源 → `after_assets`
-   - 需要上传文件到远程存储 → `after_finalize`（构建完成后）
+   - 需要上传文件到远程存储 → `after_finalize`（构建完成后批量）或 `after_media_upload`（实时上传）
+   - 需要响应后台操作 → 运行时钩子（如 `after_post_create`、`after_media_upload` 等）
 3. **注意优先级**：多个插件可能注册同一个 hook，合理设置 priority 避免冲突
 4. **善用 `cblog.log`**：开发调试时多用 `cblog.log.debug()`
 5. **路径安全**：所有文件操作使用**相对路径**，不要尝试使用绝对路径（会被沙箱拒绝）
@@ -1047,14 +1128,14 @@ end
 
 ## 十七、当前插件系统的限制
 
-1. **仅构建期 hook**：当前所有 hook 仅在构建流水线中触发，没有请求级 hook
-2. **HTTP 超时不可配置**：`cblog.http.*` 硬编码 30 秒超时，Lua 侧无法自定义
-3. **配置编辑简单**：通用配置页只提供文本输入框，不支持复杂类型。需要更好的 UI 应通过 `[[admin.pages]]` 自定义管理页面实现
-4. **无远程安装**：只有启用/禁用，不支持远程安装或自动卸载
-5. **filter hook 未在管道中使用**：构建管道只调用了 `call_action`，`apply_filter` 和 `has_handlers` 已实现但尚无调用点。插件应使用 `plugin.action()` 注册 hook，使用 `plugin.filter()` 注册的 handler 不会在构建管道中被触发
-6. **capabilities 仅声明式**：reads/writes/generates 不做强制校验
-7. **无网络访问控制**：`cblog.http.*` 可以访问任意 URL，暂无域名白名单机制
-8. **侧边栏不热更新**：`plugin_admin_pages` 在服务启动时收集，启用/禁用插件后侧边栏需重启服务才会更新
+1. **HTTP 超时不可配置**：`cblog.http.*` 硬编码 30 秒超时，Lua 侧无法自定义
+2. **配置编辑简单**：通用配置页只提供文本输入框，不支持复杂类型。需要更好的 UI 应通过 `[[admin.pages]]` 自定义管理页面实现
+3. **无远程安装**：只有启用/禁用，不支持远程安装或自动卸载
+4. **filter hook 未在管道中使用**：构建管道只调用了 `call_action`，`apply_filter` 和 `has_handlers` 已实现但尚无调用点。插件应使用 `plugin.action()` 注册 hook，使用 `plugin.filter()` 注册的 handler 不会在构建管道中被触发
+5. **capabilities 仅声明式**：reads/writes/generates 不做强制校验
+6. **无网络访问控制**：`cblog.http.*` 可以访问任意 URL，暂无域名白名单机制
+7. **侧边栏不热更新**：`plugin_admin_pages` 在服务启动时收集，启用/禁用插件后侧边栏需重启服务才会更新
+8. **运行时钩子同步阻塞**：运行时钩子在请求线程中同步执行，耗时的 HTTP 操作（如 S3 上传）会延迟响应返回
 
 ---
 
@@ -1062,7 +1143,7 @@ end
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
-| `mlua` | 0.11 | Lua 5.4 运行时 (features: lua54, serde, vendored) |
+| `mlua` | 0.11 | Lua 5.4 运行时 (features: lua54, serde, vendored, send) |
 | `toml` | 0.8 | 解析 plugin.toml |
 | `serde_json` | 1 | 插件配置序列化 |
 | `sqlx` | 0.8 | plugin_store 数据库操作 |

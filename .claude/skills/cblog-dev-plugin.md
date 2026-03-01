@@ -11,10 +11,11 @@ cblog 的插件系统基于 **Lua 5.4 脚本引擎**（通过 `mlua` crate 嵌�
 **核心设计理念：**
 - 插件通过 Lua 脚本编写，热加载无需重新编译 Rust 代码
 - 插件在构建流水线的各阶段通过 hook 介入
-- 运行在沙箱化的 Lua VM 中，路径限制 + 危险 API 移除
+- 运行在沙箱化的 Lua VM 中（`StdLib::ALL_SAFE` + 路径限制 + 危险 API 移除）
 - 插件配置通过数据库 KV 存储持久化
 - 后台管理面板提供插件的启用/禁用/配置界面
 - 插件可声明自定义的后台管理页面
+- 支持 HTTP 网络请求（`cblog.http.*`）和 S3 签名（`cblog.s3.*`）
 
 **关键源码文件：**
 
@@ -32,7 +33,7 @@ cblog 的插件系统基于 **Lua 5.4 脚本引擎**（通过 `mlua` crate 嵌�
 | `src/admin.rs` | 路由注册（含插件自定义后台页面路由） |
 | `src/build/pipeline.rs` | 构建流水线（插件引擎初始化和 hook 调用点） |
 | `src/config.rs` | 站点配置（PluginConfig 结构体） |
-| `src/state.rs` | 应用状态（plugin_admin_pages 收集） |
+| `src/state.rs` | 应用状态（plugin_admin_pages 收集、enabled_plugins 动态状态） |
 | `src/check.rs` | 项目完整性检查（含插件检查逻辑） |
 
 ---
@@ -122,10 +123,12 @@ icon = "settings"
 
 ```toml
 [plugins]
-enabled = ["search", "seo-optimizer", "syntax-highlight"]
+enabled = ["seo-optimizer", "cloud-storage"]
 ```
 
-也可在后台管理面板通过 `/admin/plugins` 页面启用/禁用（直接编辑 `cblog.toml`）。
+也可在后台管理面板通过 `/admin/plugins` 页面启用/禁用。
+
+**运行时状态**：启用列表在 `AppState.enabled_plugins`（`Arc<tokio::sync::RwLock<Vec<String>>>`）中维护。后台切换时同时写入 `cblog.toml` 文件并更新内存状态，确保 UI 实时反映变更。
 
 ---
 
@@ -140,9 +143,9 @@ enabled = ["search", "seo-optimizer", "syntax-highlight"]
    → 拓扑排序（Kahn 算法，根据 after 依赖）
    → 同层按字母序保证确定性
 3. PluginEngine::new() 初始化
-   → 创建 Lua 5.4 VM
+   → 创建 Lua 5.4 VM（StdLib::ALL_SAFE，排除 debug/ffi 等危险库）
    → 应用沙箱（移除危险 API、限制文件路径）
-   → 注册 cblog.* 全局 API
+   → 注册 cblog.* 全局 API（含 files、log、http、s3 等）
 4. engine.load_plugins(&ordered) 逐个加载
    → 检查 plugin.toml 存在
    → 加载 PluginInfo（元数据）
@@ -152,7 +155,13 @@ enabled = ["search", "seo-optimizer", "syntax-highlight"]
    → collect_pending_hooks() 收集注册的 hook 到 Rust HookRegistry
 ```
 
-### 5.2 依赖解析
+### 5.2 构建时配置加载
+
+**serve 模式**：`spawn_build()` 每次触发构建前会**从磁盘重新加载** `SiteConfig`（确保使用最新的插件启用状态），然后异步预取每个启用插件的数据库配置。加载失败时回退到内存中的缓存配置。
+
+**CLI 模式**：`load_all_configs_sync()` 同步加载所有启用插件的配置。
+
+### 5.3 依赖解析
 
 `resolve_load_order()`（`src/plugin/scheduler.rs`）：
 1. 只保留 `after` 中同样在 enabled 列表中的插件
@@ -211,7 +220,7 @@ end)
 | `after_assets` | 静态资源处理完毕后 | `{ project_root, output_dir }` |
 | `after_finalize` | 构建最终阶段完成后 | `{ project_root, output_dir, posts, site_url }` |
 
-**重要**：当前构建管道中所有 hook 均以 **action** 类型调用（`call_action`）。
+**重要**：当前构建管道中所有 hook 均以 **action** 类型调用（`call_action`）。`output_dir` 传入的是**相对路径**（如 `"public"`），因为 Lua 沙箱禁止绝对路径。
 
 ### 6.5 Hook 上下文数据详情
 
@@ -239,7 +248,7 @@ ctx.posts           -- 文章数组，每个元素包含：
 **`after_finalize` 上下文：**
 ```lua
 ctx.project_root    -- 项目根目录路径
-ctx.output_dir      -- 输出目录路径（通常是 "public"）
+ctx.output_dir      -- 输出目录相对路径（通常是 "public"）
 ctx.posts           -- 同 after_load 的 posts
 ctx.site_url        -- 站点 URL
 ```
@@ -247,7 +256,7 @@ ctx.site_url        -- 站点 URL
 **`after_taxonomy` 上下文：**
 ```lua
 ctx.project_root    -- 项目根目录路径
-ctx.output_dir      -- 输出目录路径（通常是 "public"）
+ctx.output_dir      -- 输出目录相对路径（通常是 "public"）
 ctx.tag_count       -- 标签数量
 ctx.category_count  -- 分类数量
 ctx.archive_count   -- 月份归档数量
@@ -256,7 +265,7 @@ ctx.archive_count   -- 月份归档数量
 **`after_render` / `after_assets` 上下文：**
 ```lua
 ctx.project_root    -- 项目根目录路径
-ctx.output_dir      -- 输出目录路径（通常是 "public"）
+ctx.output_dir      -- 输出目录相对路径（通常是 "public"）
 ```
 
 ---
@@ -320,7 +329,110 @@ ctx.output_dir      -- 输出目录路径（通常是 "public"）
 - 自动消除 `..` 等路径遍历
 - 最终路径必须位于项目根目录内
 
-### 7.4 `plugin` 全局对象
+### 7.4 `cblog.http` HTTP 请求 API
+
+通过 `reqwest` 实现，在同步 Lua 运行时中通过 `tokio::task::block_in_place` 桥接异步执行。硬编码 **30 秒超时**。
+
+| API | 签名 | 说明 |
+|-----|------|------|
+| `cblog.http.get(url, opts?)` | `(string, table?) -> table` | HTTP GET 请求 |
+| `cblog.http.post(url, opts?)` | `(string, table?) -> table` | HTTP POST 请求 |
+| `cblog.http.put(url, opts?)` | `(string, table?) -> table` | HTTP PUT 请求 |
+| `cblog.http.delete(url, opts?)` | `(string, table?) -> table` | HTTP DELETE 请求 |
+| `cblog.http.put_file(url, filepath, opts?)` | `(string, string, table?) -> table` | HTTP PUT 上传文件 |
+
+**opts 参数结构：**
+```lua
+{
+    headers = {                              -- 可选，自定义请求头
+        ["Content-Type"] = "application/json",
+        ["Authorization"] = "Bearer xxx",
+    },
+    body = '{"key": "value"}',               -- 可选，请求体字符串（仅 post/put 读取）
+}
+```
+
+**返回值结构：**
+```lua
+{
+    status = 200,           -- HTTP 状态码（u16）
+    body = "...",           -- 响应体字符串
+    headers = {             -- 响应头 table（同名 header 后者覆盖前者）
+        ["content-type"] = "application/json",
+    }
+}
+```
+
+**`put_file` 说明**：`filepath` 是相对于项目根目录的路径，经过 `sandbox::resolve_path` 安全校验。用于上传二进制文件，body 从文件读取而非 opts。
+
+**异步桥接机制**：
+- 在 tokio runtime 内（serve 模式构建）：使用 `tokio::task::block_in_place` + `Handle::block_on`
+- 不在 tokio runtime 内（CLI `cblog build`）：fallback 创建单线程 tokio runtime 执行
+
+**使用示例：**
+```lua
+-- GET 请求
+local resp = cblog.http.get("https://api.example.com/data")
+if resp.status == 200 then
+    local data = resp.body
+    cblog.log.info("获取成功: " .. data:sub(1, 100))
+end
+
+-- POST 请求
+local resp = cblog.http.post("https://api.example.com/upload", {
+    headers = { ["Content-Type"] = "application/json" },
+    body = cblog.json({ title = "test" }),
+})
+
+-- 上传文件
+local resp = cblog.http.put_file(
+    "https://s3.example.com/bucket/key",
+    "media/image.jpg",
+    { headers = signed_headers }
+)
+```
+
+### 7.5 `cblog.s3` S3 签名 API
+
+提供 AWS Signature V4 签名辅助，用于与 S3/OSS/COS 等兼容存储交互。内部使用 `hmac::Hmac<sha2::Sha256>` 实现标准签名流程。
+
+| API | 签名 | 说明 |
+|-----|------|------|
+| `cblog.s3.sign_headers(method, url, region, access_key, secret_key, headers?, payload_hash?)` | `(string, string, string, string, string, table?, string?) -> table` | 生成签名后的请求头 |
+
+**参数说明：**
+- `method`：HTTP 方法（如 `"PUT"`、`"GET"`、`"DELETE"`）
+- `url`：完整请求 URL（如 `"https://bucket.s3.amazonaws.com/key"`）
+- `region`：AWS region（如 `"us-east-1"`）
+- `access_key`：Access Key ID
+- `secret_key`：Secret Access Key
+- `headers`：可选，额外需要签名的 headers（如 `{ ["content-type"] = "image/jpeg" }`）。`host`、`x-amz-content-sha256`、`x-amz-date` 自动处理
+- `payload_hash`：可选，请求体的 SHA256 哈希，默认 `"UNSIGNED-PAYLOAD"`
+
+**返回值**：包含所有需要附加到 HTTP 请求的签名 headers：
+```lua
+{
+    Authorization = "AWS4-HMAC-SHA256 Credential=.../..., SignedHeaders=..., Signature=...",
+    ["x-amz-date"] = "20260301T120000Z",
+    ["x-amz-content-sha256"] = "UNSIGNED-PAYLOAD",
+    host = "bucket.s3.amazonaws.com",
+    ["content-type"] = "image/jpeg",    -- 用户传入的额外 headers 也会包含在内
+}
+```
+
+**使用示例：**
+```lua
+local url = "https://s3.example.com/my-bucket/media/image.jpg"
+local signed = cblog.s3.sign_headers(
+    "PUT", url, "us-east-1",
+    cfg.access_key, cfg.secret_key,
+    { ["content-type"] = "image/jpeg" },
+    "UNSIGNED-PAYLOAD"
+)
+local resp = cblog.http.put_file(url, "media/image.jpg", { headers = signed })
+```
+
+### 7.6 `plugin` 全局对象
 
 | API | 签名 | 说明 |
 |-----|------|------|
@@ -328,11 +440,19 @@ ctx.output_dir      -- 输出目录路径（通常是 "public"）
 | `plugin.action(hook_name, priority, handler)` | `(string, int, function) -> nil` | 注册 action hook |
 | `plugin.config()` | `() -> table` | 获取当前插件的配置（预加载的 KV 对） |
 
+**注意**：`plugin` 表在每个插件加载前通过 `setup_plugin_api` 动态创建，每次加载新插件会覆盖前一个插件的 `plugin` 表。因此 `plugin.config()` 始终返回当前正在加载/执行的插件的配置。
+
 ---
 
 ## 八、沙箱安全机制
 
-### 8.1 危险 API 移除
+### 8.1 Lua VM 初始化安全
+
+Lua VM 使用 `StdLib::ALL_SAFE` 初始化，这是 mlua 提供的安全子集，在标准库启用时即排除了 `debug` 库和 `ffi` 库等危险模块。这是第一层安全保障。
+
+### 8.2 危险 API 移除
+
+在 `ALL_SAFE` 基础上，沙箱进一步手动移除：
 
 | 被移除的 API | 原因 |
 |-------------|------|
@@ -340,15 +460,20 @@ ctx.output_dir      -- 输出目录路径（通常是 "public"）
 | `os.exit` | 禁止退出进程 |
 | `io.popen` | 禁止管道操作 |
 
-### 8.2 文件路径沙箱
+### 8.3 文件路径沙箱
 
-- `io.open` 被替换为安全版本，所有路径经过 `resolve_path()` 验证
+- `io.open` 被替换为安全版本（原始 `io.open` 保存到 `_io_original.open`），所有路径经过 `resolve_path()` 验证
 - `resolve_path()` 规则：
-  - 禁止绝对路径
+  - 禁止绝对路径（直接报错 "不允许绝对路径"）
   - 相对路径拼接到项目根目录
-  - 通过 `canonicalize()` 消除 `..` 路径遍历
-  - 最终路径必须位于项目根目录内，否则报错
+  - 文件已存在时通过 `canonicalize()` 消除 `..` 路径遍历和符号链接
+  - 文件不存在时手动逐组件解析（`..` 弹出上级、`.` 忽略、非法组件报错）
+  - 最终路径必须位于项目根目录内，否则报错 "路径越界"
   - `cblog.files.*` 所有操作也使用相同的 `resolve_path()`
+
+### 8.4 网络访问
+
+当前无网络域名白名单限制。`cblog.http.*` 可以访问任意 URL。后续可通过 `plugin.toml` 的 capabilities 扩展网络访问控制。
 
 ---
 
@@ -380,13 +505,14 @@ CREATE TABLE IF NOT EXISTS plugin_store (
 ### 9.3 配置加载流程
 
 1. **CLI `build` 命令**：`load_all_configs_sync()` 同步加载所有启用插件的配置
-2. **serve 模式**：`spawn_build()` 异步预取每个启用插件的配置
+2. **serve 模式**：`spawn_build()` 先从文件重新加载 `SiteConfig`，再异步预取每个启用插件的配置
 3. **Lua 端访问**：`plugin.config()` 获取当前插件的配置 table，如无配置则返回空 table
 
 ### 9.4 后台配置管理
 
-- **查看配置**：`GET /admin/plugins/{name}` — 显示所有 KV 对，每个 key 一个文本输入框
-- **保存配置**：`POST /admin/plugins/{name}/config` — 表单提交，所有字段以 JSON string 值保存
+- **查看配置**：`GET /admin/plugins/{name}` — 插件详情页显示所有 KV 对，每个 key 一个文本输入框
+- **保存配置**：`POST /admin/plugins/{name}/config` — 表单提交，`_csrf_token` 字段自动过滤，其余字段以 JSON string 值保存
+- **保存后跳转**：优先根据 HTTP `Referer` 头跳转回来源页（仅 `/admin/` 路径），否则跳转到插件详情页。这使得从插件自定义管理页面提交配置后能自动返回该页面
 
 ---
 
@@ -416,6 +542,8 @@ icon = "search"
 1. 后台侧边栏"插件扩展"分组下显示链接
 2. URL 为 `/admin/ext/{plugin_name}/{slug}`
 3. 模板文件路径为 `plugins/{plugin_name}/admin/{slug}.cbtml`
+4. **插件列表页**：已启用的插件如果声明了 admin pages，入口按钮直接显示在列表页（如"云存储"按钮），减少跳转层级
+5. **插件详情页**：声明的管理页面以独立卡片区域展示链接
 
 **渲染流程（`src/admin.rs`）：**
 1. 读取 CBTML 模板文件
@@ -445,6 +573,7 @@ site.description            -- 站点描述
 - Lua VM 初始化/脚本执行失败：转为 `anyhow::anyhow!` 错误
 - Hook 执行失败：详细错误信息包含 hook 名称和优先级
 - 插件冲突/循环依赖：使用 `bail!` 中止
+- HTTP 请求失败：通过 `mlua::Error::external()` 转为 Lua 错误
 
 ### 11.2 Lua 端
 
@@ -519,6 +648,58 @@ plugin.action("after_finalize", 20, function(ctx)
     cblog.log.info("robots.txt 已生成")
 end)
 ```
+
+### 12.3 cloud-storage — 云存储同步
+
+S3/OSS/COS 兼容的云存储插件，构建后自动将 media 目录上传到远程存储。
+
+**plugin.toml：**
+```toml
+[plugin]
+name = "cloud-storage"
+version = "0.1.0"
+description = "云存储支持（S3/OSS/COS 兼容）"
+
+[capabilities]
+reads = ["config.media"]
+writes = ["media"]
+generates = []
+
+[dependencies]
+after = []
+conflicts = []
+
+[[admin.pages]]
+label = "云存储"
+slug = "settings"
+icon = "upload"
+```
+
+**核心逻辑（main.lua）：**
+
+在 `after_finalize` hook（优先级 50）中执行：
+1. 读取插件配置（`plugin.config()`），检查 `enabled == "true"`
+2. 校验必填配置：`endpoint`、`bucket`、`access_key`、`secret_key`
+3. 递归扫描 `media/` 目录所有文件
+4. 对每个文件：
+   - 根据扩展名推断 `Content-Type`
+   - 使用 `cblog.s3.sign_headers()` 生成 AWS V4 签名
+   - 使用 `cblog.http.put_file()` 上传到 `{endpoint}/{bucket}/media/{rel_path}`
+5. 如果配置了 `url_prefix`（CDN 前缀），扫描输出目录所有 HTML 文件，将 `/media/` 替换为 `{url_prefix}/`
+
+**自定义管理页面（admin/settings.cbtml）：**
+
+提供可视化配置表单，字段包括：
+- `enabled`：启用开关（select 选择框）
+- `provider`：服务商（s3/oss/cos/custom）
+- `endpoint`：S3 兼容 endpoint URL
+- `bucket`：存储桶名
+- `region`：区域
+- `access_key`：访问密钥
+- `secret_key`：密钥（password 输入框）
+- `url_prefix`：CDN/公开访问前缀
+
+表单提交到 `POST /admin/plugins/cloud-storage/config`（通用插件配置保存路由）。
 
 ---
 
@@ -603,7 +784,6 @@ icon = "chart"
 **plugins/analytics/main.lua：**
 ```lua
 plugin.action("after_finalize", 10, function(ctx)
-    -- 统计数据并存储为 JSON
     local stats = {
         total_posts = #ctx.posts,
         total_words = 0
@@ -716,7 +896,7 @@ plugin.action("after_render", 15, function(ctx)
 end)
 ```
 
-**注意**：当前内置插件只遍历一级子目录。如需递归遍历，可以自行编写递归函数。
+**注意**：`cblog.files.list()` 只列出一级内容。如需递归遍历，自行编写递归函数（参考 cloud-storage 插件中的 `scan_dir` 实现）。
 
 ### 13.6 文件生成模式（常见模式）
 
@@ -742,6 +922,50 @@ plugin.action("after_finalize", 10, function(ctx)
 end)
 ```
 
+### 13.7 HTTP 请求模式（常见模式）
+
+在 hook 中调用外部 API 或上传文件到远程存储：
+
+```lua
+plugin.action("after_finalize", 10, function(ctx)
+    -- 调用外部 API
+    local resp = cblog.http.post("https://api.example.com/notify", {
+        headers = {
+            ["Content-Type"] = "application/json",
+            ["Authorization"] = "Bearer " .. (plugin.config().api_key or ""),
+        },
+        body = cblog.json({
+            event = "build_complete",
+            post_count = #ctx.posts,
+        }),
+    })
+
+    if resp.status == 200 then
+        cblog.log.info("通知发送成功")
+    else
+        cblog.log.warn("通知发送失败: HTTP " .. resp.status)
+    end
+end)
+```
+
+### 13.8 S3 上传模式（常见模式）
+
+结合 `cblog.s3.sign_headers` 和 `cblog.http.put_file` 上传文件到 S3 兼容存储：
+
+```lua
+local function upload_to_s3(cfg, local_path, object_key)
+    local url = string.format("%s/%s/%s", cfg.endpoint, cfg.bucket, object_key)
+    local signed = cblog.s3.sign_headers(
+        "PUT", url, cfg.region or "us-east-1",
+        cfg.access_key, cfg.secret_key,
+        { ["content-type"] = "application/octet-stream" },
+        "UNSIGNED-PAYLOAD"
+    )
+    local resp = cblog.http.put_file(url, local_path, { headers = signed })
+    return resp.status >= 200 and resp.status < 300
+end
+```
+
 ---
 
 ## 十四、后台管理功能
@@ -750,21 +974,30 @@ end)
 
 - 扫描 `plugins/` 目录下所有可用插件
 - 显示每个插件的名称、版本、描述、启用状态
-- 提供启用/禁用按钮和"设置"链接
+- 提供启用/禁用按钮
+- **已启用插件**：如果插件声明了 `[[admin.pages]]`，管理页面入口按钮直接显示在列表页（如"云存储"），减少跳转层级
+- **已启用插件**：显示"详细"链接，跳转到插件详情页
 
 ### 14.2 插件启用/禁用（`POST /admin/plugins/toggle`）
 
-- 读取 `cblog.toml` 文件
+- 从 `state.enabled_plugins`（`Arc<RwLock<Vec<String>>>`）读取当前启用列表
 - 切换指定插件的启用状态
-- 直接修改 `[plugins]` 段的 `enabled` 行
+- 直接修改 `cblog.toml` 文件的 `[plugins]` 段的 `enabled` 行
 - 如果文件中没有 `[plugins]` 段则自动添加
+- **同步更新内存中的 `enabled_plugins`**，确保 UI 立即反映变更
+
+**注意**：`plugin_admin_pages`（侧边栏条目）在服务启动时收集，toggle 操作不会更新侧边栏。需要重启服务才能刷新侧边栏中的插件扩展链接。
 
 ### 14.3 插件详情页（`GET /admin/plugins/{name}`）
 
-- 显示插件完整元信息（名称、版本、描述）
+- 显示插件完整元信息（名称、版本、描述、启用状态 badge）
 - 显示能力声明（Reads/Writes/Generates）
 - 显示依赖关系（After/Conflicts）
-- 显示并编辑插件配置（KV 对文本输入框）
+- **管理页面区块**：如果插件声明了 `[[admin.pages]]`，显示"管理页面"卡片，提供跳转按钮
+- **插件配置区块**：
+  - 有 KV 数据时：显示每个 key 的文本输入框和保存按钮
+  - 无 KV 数据但有管理页面时：提示"此插件通过管理页面进行配置"
+  - 无 KV 数据也无管理页面时：提示"此插件暂无配置数据"
 
 ### 14.4 插件自定义后台页面
 
@@ -799,25 +1032,29 @@ end)
    - 需要修改生成的 HTML → `after_render`
    - 需要生成额外文件 → `after_finalize`
    - 需要处理资源 → `after_assets`
+   - 需要上传文件到远程存储 → `after_finalize`（构建完成后）
 3. **注意优先级**：多个插件可能注册同一个 hook，合理设置 priority 避免冲突
 4. **善用 `cblog.log`**：开发调试时多用 `cblog.log.debug()`
-5. **路径安全**：所有文件操作使用相对路径，不要尝试访问项目目录外的文件
+5. **路径安全**：所有文件操作使用**相对路径**，不要尝试使用绝对路径（会被沙箱拒绝）
 6. **声明 capabilities**：虽然不强制校验，但良好的 capabilities 声明帮助用户理解插件行为
-7. **配置通过后台管理**：通过 `/admin/plugins/{name}` 页面设置 KV 对，Lua 中用 `plugin.config()` 读取
+7. **配置管理**：推荐通过 `[[admin.pages]]` 声明自定义管理页面，提供更好的配置 UI 体验。简单插件也可直接通过 `/admin/plugins/{name}` 详情页编辑 KV 对
 8. **测试**：使用 `cblog check` 验证插件配置完整性，使用 `cblog build` 验证插件运行
 9. **遍历深度**：`cblog.files.list()` 只列出一级内容，需要递归时自行编写递归函数
-10. **Lua 中无异步**：所有 Lua 脚本同步执行，不支持异步操作
+10. **HTTP 请求注意**：`cblog.http.*` 有 30 秒硬编码超时，大量文件上传时注意单文件大小限制
+11. **参考 cloud-storage**：需要与外部服务交互的插件可参考 `plugins/cloud-storage/` 的实现模式
 
 ---
 
 ## 十七、当前插件系统的限制
 
 1. **仅构建期 hook**：当前所有 hook 仅在构建流水线中触发，没有请求级 hook
-2. **无异步支持**：Lua 脚本同步执行，不支持 HTTP 请求等异步操作
-3. **配置编辑简单**：后台配置页只提供文本输入框，不支持复杂类型
+2. **HTTP 超时不可配置**：`cblog.http.*` 硬编码 30 秒超时，Lua 侧无法自定义
+3. **配置编辑简单**：通用配置页只提供文本输入框，不支持复杂类型。需要更好的 UI 应通过 `[[admin.pages]]` 自定义管理页面实现
 4. **无远程安装**：只有启用/禁用，不支持远程安装或自动卸载
 5. **filter hook 未在管道中使用**：构建管道只调用了 `call_action`，`apply_filter` 和 `has_handlers` 已实现但尚无调用点。插件应使用 `plugin.action()` 注册 hook，使用 `plugin.filter()` 注册的 handler 不会在构建管道中被触发
 6. **capabilities 仅声明式**：reads/writes/generates 不做强制校验
+7. **无网络访问控制**：`cblog.http.*` 可以访问任意 URL，暂无域名白名单机制
+8. **侧边栏不热更新**：`plugin_admin_pages` 在服务启动时收集，启用/禁用插件后侧边栏需重启服务才会更新
 
 ---
 
@@ -831,5 +1068,9 @@ end)
 | `sqlx` | 0.8 | plugin_store 数据库操作 |
 | `minijinja` | 2 | 插件后台页面模板渲染 |
 | `syntect` | 5 | cblog.highlight() 代码高亮 |
+| `reqwest` | 0.12 | cblog.http.* HTTP 请求 (features: json, rustls-tls) |
+| `sha2` | 0.10 | cblog.s3 签名 SHA256 哈希 |
+| `hmac` | 0.12 | cblog.s3 签名 HMAC-SHA256 |
+| `chrono` | 0.4 | cblog.s3 签名时间戳生成 |
 | `anyhow` | 1 | 错误处理 |
 | `tracing` | 0.1 | 日志输出 |

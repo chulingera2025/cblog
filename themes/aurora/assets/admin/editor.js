@@ -22,7 +22,16 @@ try {
             StarterKit.configure({
                 link: { openOnClick: false },
             }),
-            Image,
+            Image.configure({
+                allowBase64: true,
+                resize: {
+                    enabled: true,
+                    directions: ['bottom-right', 'bottom-left', 'top-right', 'top-left'],
+                    minWidth: 50,
+                    minHeight: 50,
+                    alwaysPreserveAspectRatio: true,
+                },
+            }),
             Table.configure({ resizable: true }),
             TableRow,
             TableCell,

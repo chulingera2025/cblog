@@ -23,7 +23,7 @@ slot content
             if plugin.description
               p.form-hint {{ plugin.description }}
             end
-          div.actions
+          div.actions [style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"]
             form [method="POST"] [action="/admin/plugins/toggle"]
               input [type="hidden"] [name="plugin_name"] [value="{{ plugin.name }}"]
               if plugin.is_enabled
@@ -32,7 +32,12 @@ slot content
                 button.btn.btn-primary.btn-sm [type="submit"] 启用
               end
             if plugin.is_enabled
-              a.btn.btn-secondary.btn-sm [href="/admin/plugins/{{ plugin.name }}"] 设置
+              if plugin.admin_pages
+                for page in plugin.admin_pages
+                  a.btn.btn-secondary.btn-sm [href="{{ page.href }}"] {{ page.label }}
+                end
+              end
+              a.btn.btn-secondary.btn-sm [href="/admin/plugins/{{ plugin.name }}"] 详细
             end
     end
   else

@@ -143,12 +143,6 @@ pub async fn upload_media(
             return render_upload_error(&state, &format!("写入文件失败：{e}"));
         }
 
-        let public_path = state.project_root.join("public/media").join(&relative_path);
-        if let Some(parent) = public_path.parent() {
-            tokio::fs::create_dir_all(parent).await.ok();
-        }
-        tokio::fs::write(&public_path, &processed.data).await.ok();
-
         let thumb_url = if let Some(ref thumb_data) = processed.thumbnail {
             let thumb_relative = thumb_relative_path(&relative_path);
 
@@ -157,12 +151,6 @@ pub async fn upload_media(
                 tokio::fs::create_dir_all(parent).await.ok();
             }
             tokio::fs::write(&thumb_media, thumb_data).await.ok();
-
-            let thumb_public = state.project_root.join("public/media").join(&thumb_relative);
-            if let Some(parent) = thumb_public.parent() {
-                tokio::fs::create_dir_all(parent).await.ok();
-            }
-            tokio::fs::write(&thumb_public, thumb_data).await.ok();
 
             Some(format!("/media/{thumb_relative}"))
         } else {
@@ -203,18 +191,10 @@ pub async fn delete_media(
         let media_file = state.project_root.join(upload_dir).join(relative);
         tokio::fs::remove_file(&media_file).await.ok();
 
-        let public_file = state.project_root.join("public/media").join(relative);
-        tokio::fs::remove_file(&public_file).await.ok();
-
         if let Some(thumb) = thumb_url {
             let thumb_relative = thumb.strip_prefix("/media/").unwrap_or(&thumb);
             let thumb_media = state.project_root.join(upload_dir).join(thumb_relative);
             tokio::fs::remove_file(&thumb_media).await.ok();
-            let thumb_public = state
-                .project_root
-                .join("public/media")
-                .join(thumb_relative);
-            tokio::fs::remove_file(&thumb_public).await.ok();
         }
     }
 
@@ -295,12 +275,6 @@ pub async fn api_upload_media(
                 .into_response();
         }
 
-        let public_path = state.project_root.join("public/media").join(&relative_path);
-        if let Some(parent) = public_path.parent() {
-            tokio::fs::create_dir_all(parent).await.ok();
-        }
-        tokio::fs::write(&public_path, &processed.data).await.ok();
-
         let thumb_url = if let Some(ref thumb_data) = processed.thumbnail {
             let thumb_relative = thumb_relative_path(&relative_path);
 
@@ -309,12 +283,6 @@ pub async fn api_upload_media(
                 tokio::fs::create_dir_all(parent).await.ok();
             }
             tokio::fs::write(&thumb_media, thumb_data).await.ok();
-
-            let thumb_public = state.project_root.join("public/media").join(&thumb_relative);
-            if let Some(parent) = thumb_public.parent() {
-                tokio::fs::create_dir_all(parent).await.ok();
-            }
-            tokio::fs::write(&thumb_public, thumb_data).await.ok();
 
             Some(format!("/media/{thumb_relative}"))
         } else {

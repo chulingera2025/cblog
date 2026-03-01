@@ -870,6 +870,65 @@ a:hover {
     margin: 1em 0;
 }
 
+/* 图片 resize 容器 */
+.editor-content .ProseMirror [data-resize-container] {
+    display: inline-block;
+    position: relative;
+    max-width: 100%;
+    line-height: 0;
+}
+
+.editor-content .ProseMirror [data-resize-container]:hover [data-resize-handle],
+.editor-content .ProseMirror [data-resize-container].is-resizing [data-resize-handle] {
+    opacity: 1;
+}
+
+.editor-content .ProseMirror [data-resize-handle] {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: var(--c-brand);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity var(--transition);
+    z-index: 5;
+}
+
+.editor-content .ProseMirror [data-resize-handle][data-resize-handle-direction="top-left"] {
+    top: -5px;
+    left: -5px;
+    cursor: nwse-resize;
+}
+
+.editor-content .ProseMirror [data-resize-handle][data-resize-handle-direction="top-right"] {
+    top: -5px;
+    right: -5px;
+    cursor: nesw-resize;
+}
+
+.editor-content .ProseMirror [data-resize-handle][data-resize-handle-direction="bottom-left"] {
+    bottom: -5px;
+    left: -5px;
+    cursor: nesw-resize;
+}
+
+.editor-content .ProseMirror [data-resize-handle][data-resize-handle-direction="bottom-right"] {
+    bottom: -5px;
+    right: -5px;
+    cursor: nwse-resize;
+}
+
+.editor-content .ProseMirror [data-resize-container].is-resizing {
+    outline: 2px solid var(--c-brand);
+    outline-offset: 2px;
+    border-radius: var(--radius);
+}
+
+.editor-content .ProseMirror [data-resize-container] img {
+    margin: 0;
+}
+
 .editor-content .ProseMirror hr {
     border: none;
     border-top: 2px solid var(--c-border);

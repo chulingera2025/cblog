@@ -1,6 +1,6 @@
 [package]
 name = "cblog"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["chulingera2025"]
 description = "Rust + Lua 博客引擎：后台动态，前台全静态 SSG"

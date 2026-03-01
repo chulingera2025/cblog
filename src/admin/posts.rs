@@ -145,6 +145,13 @@ pub async fn edit_post_page(
     let cover_image = meta["cover_image"].as_str().unwrap_or("");
     let excerpt = meta["excerpt"].as_str().unwrap_or("");
 
+    // 草稿状态下隐藏自动生成的 draft-xxx slug
+    let display_slug = if post_status == "draft" && post_slug.starts_with("draft-") {
+        ""
+    } else {
+        post_slug
+    };
+
     let sidebar_groups = layout::sidebar_groups_value("/admin/posts");
     let plugin_items = layout::plugin_sidebar_value(&state.plugin_admin_pages, "/admin/posts");
 
@@ -158,7 +165,7 @@ pub async fn edit_post_page(
         is_edit => true,
         post_id => post_id,
         post_title => post_title,
-        post_slug => post_slug,
+        post_slug => display_slug,
         post_status => post_status,
         post_tags => tags,
         post_category => category,
@@ -180,7 +187,16 @@ pub async fn update_post(
 ) -> Redirect {
     let slug = match form.slug.as_deref() {
         Some(s) if !s.trim().is_empty() => s.trim().to_string(),
-        _ => generate_slug(&form.title),
+        _ => {
+            let generated = generate_slug(&form.title);
+            if generated.is_empty() {
+                state.posts.get_by_id(&id).await
+                    .map(|row| row.get::<&str, _>("slug").to_string())
+                    .unwrap_or(generated)
+            } else {
+                generated
+            }
+        }
     };
     let status = form.status.as_deref().unwrap_or("draft");
 
@@ -270,7 +286,16 @@ pub async fn autosave_update(
 ) -> Response {
     let slug = match body.slug.as_deref() {
         Some(s) if !s.trim().is_empty() => s.trim().to_string(),
-        _ => generate_slug(&body.title),
+        _ => {
+            let generated = generate_slug(&body.title);
+            if generated.is_empty() {
+                state.posts.get_by_id(&id).await
+                    .map(|row| row.get::<&str, _>("slug").to_string())
+                    .unwrap_or(generated)
+            } else {
+                generated
+            }
+        }
     };
 
     let meta = serde_json::json!({

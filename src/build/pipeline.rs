@@ -294,9 +294,10 @@ fn run_pipeline(
         None
     };
 
-    let ctx = serde_json::json!({
-        "project_root": project_root.to_string_lossy(),
-    });
+    let output_dir_str = project_root
+        .join(&config.build.output_dir)
+        .to_string_lossy()
+        .to_string();
 
     // 阶段 1: content.load
     let posts = stages::load::load_posts_from_db(db_posts, config);
@@ -320,7 +321,14 @@ fn run_pipeline(
     );
 
     if let Some(ref eng) = engine {
-        eng.hooks.call_action(&eng.lua, "after_taxonomy", &ctx)?;
+        let taxonomy_ctx = serde_json::json!({
+            "project_root": project_root.to_string_lossy(),
+            "output_dir": &output_dir_str,
+            "tag_count": taxonomy.tags.len(),
+            "category_count": taxonomy.categories.len(),
+            "archive_count": taxonomy.archives.len(),
+        });
+        eng.hooks.call_action(&eng.lua, "after_taxonomy", &taxonomy_ctx)?;
     }
 
     // 阶段 4: page.generate
@@ -356,14 +364,22 @@ fn run_pipeline(
     stages::render::render_pages(project_root, config, &pages_to_render, bctx.theme_saved_config, bctx.site_settings)?;
 
     if let Some(ref eng) = engine {
-        eng.hooks.call_action(&eng.lua, "after_render", &ctx)?;
+        let render_ctx = serde_json::json!({
+            "project_root": project_root.to_string_lossy(),
+            "output_dir": &output_dir_str,
+        });
+        eng.hooks.call_action(&eng.lua, "after_render", &render_ctx)?;
     }
 
     // 阶段 6: asset.process
     stages::assets::process_assets(project_root, config, bctx.theme_saved_config)?;
 
     if let Some(ref eng) = engine {
-        eng.hooks.call_action(&eng.lua, "after_assets", &ctx)?;
+        let assets_ctx = serde_json::json!({
+            "project_root": project_root.to_string_lossy(),
+            "output_dir": &output_dir_str,
+        });
+        eng.hooks.call_action(&eng.lua, "after_assets", &assets_ctx)?;
     }
 
     // 阶段 7: build.finalize
@@ -372,7 +388,7 @@ fn run_pipeline(
     if let Some(ref eng) = engine {
         let finalize_ctx = serde_json::json!({
             "project_root": project_root.to_string_lossy(),
-            "output_dir": project_root.join(&config.build.output_dir).to_string_lossy(),
+            "output_dir": &output_dir_str,
             "posts": serialize_posts(&posts),
             "site_url": &config.site.url,
         });
